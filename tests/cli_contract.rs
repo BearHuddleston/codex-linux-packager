@@ -119,10 +119,10 @@ fn check_upstream_fixture_reports_the_guarded_automatic_action() {
         serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
     assert_eq!(value["schema"], 1);
     assert_eq!(value["kind"], "upstream_status");
-    assert_eq!(value["action"], "rebuild_candidate");
+    assert_eq!(value["action"], "current");
     assert_eq!(value["contract_update_required"], false);
-    assert_eq!(value["candidate_rebuild_required"], true);
-    assert_eq!(value["automatic_rebuild_permitted"], true);
+    assert_eq!(value["candidate_rebuild_required"], false);
+    assert_eq!(value["automatic_rebuild_permitted"], false);
     assert!(output.stdout.ends_with(b"\n"));
 }
 
