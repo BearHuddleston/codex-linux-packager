@@ -85,3 +85,74 @@ fn proprietary_rebuild_is_isolated_to_an_explicit_trusted_runner() {
         "digest-only pull request must run on GitHub-hosted infrastructure"
     );
 }
+
+#[test]
+fn protected_draft_release_separates_signing_from_repository_write_authority() {
+    let workflow = include_str!("../.github/workflows/release-draft.yml");
+
+    for required in [
+        "workflow_dispatch:",
+        CHECKOUT_V6_SHA,
+        "codex-packager-trusted",
+        "environment: release-signing",
+        "UPDATE_SIGNING_SEED_BASE64: ${{ secrets.UPDATE_SIGNING_SEED_BASE64 }}",
+        "sign-update",
+        "prepare-release",
+        "verify-release",
+        "environment: release-draft",
+        "needs: sign",
+        "contents: write",
+        "gh release create",
+        "--draft",
+        "codex-desktop-unofficial-x86_64.AppImage",
+        "codex-linux-x86_64-update.json",
+        "codex-linux-x86_64.spdx.json",
+        "release-attestation.json",
+        "third-party-notices.json",
+        "SHA256SUMS",
+        ".assessment_scope == $candidate[0].assessment_scope",
+        "EXPECTED_ARTIFACT_SHA256",
+        "EXPECTED_ARTIFACT_BYTES",
+        "EXPECTED_APPDIR_SHA256",
+        "EXPECTED_PROVENANCE_SHA256",
+        "EXPECTED_CARGO_LOCK_SHA256",
+        "sha256sum \"${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage\"",
+        "stat --format=%s \"${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage\"",
+        "--json isDraft,assets",
+        ".isDraft == true",
+        "map(.name) | sort",
+        "find \"${download}\" -mindepth 1 -maxdepth 1",
+        "mktemp --directory --tmpdir=\"${RUNNER_TEMP}\"",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "protected draft-release workflow is missing {required:?}"
+        );
+    }
+    for forbidden in [
+        "pull_request:",
+        "push:",
+        "schedule:",
+        "actions/upload-artifact",
+        "actions/download-artifact",
+        "--draft=false",
+        "--latest",
+    ] {
+        assert!(
+            !workflow.contains(forbidden),
+            "draft-release workflow must not contain {forbidden:?}"
+        );
+    }
+
+    let draft_job = workflow
+        .find("\n  draft:\n")
+        .expect("draft job must be separate");
+    assert!(
+        workflow[..draft_job].contains("contents: read"),
+        "signing job must have read-only repository permission"
+    );
+    assert!(
+        !workflow[draft_job..].contains("UPDATE_SIGNING_SEED_BASE64"),
+        "repository-write job must not receive the release-signing seed"
+    );
+}
