@@ -50,7 +50,7 @@
 | Version-matched inputs | Codex CLI 0.146.0-alpha.9.2 / ripgrep 15.2.0 |
 | Persisted documents | Schema `1`, deterministic compact JSON |
 | Producer | `io.github.bearhuddleston.codex-linux-packager.rust` |
-| Last completed candidate | Codex 26.721.81911 build 5973; [digest record](data/engineering-candidate.json) |
+| Last completed candidate | Codex 26.727.40816 build 6067; [digest record](data/engineering-candidate.json) |
 | Updates | Pinned Ed25519 manifest; full-file SHA-256; atomic next-launch activation |
 | Automation | Hourly public monitor; protected candidate rebuild and draft-release workflows |
 | Release status | Engineering candidate built; public AppImage publication blocked |
