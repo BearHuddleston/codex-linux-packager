@@ -3,6 +3,16 @@
 use std::process::Command;
 
 #[test]
+fn cargo_run_unambiguously_selects_the_packaging_cli() {
+    let manifest = include_str!("../Cargo.toml");
+
+    assert!(
+        manifest.contains("default-run = \"codex-linux-packager\""),
+        "Cargo.toml must keep plain cargo run usable after adding helper binaries"
+    );
+}
+
+#[test]
 fn help_exposes_every_planned_command_concept() {
     let output = Command::new(env!("CARGO_BIN_EXE_codex-linux-packager"))
         .arg("--help")
