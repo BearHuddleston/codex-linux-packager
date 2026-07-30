@@ -33,6 +33,9 @@ cargo audit
 cargo deny check
 ```
 
+Run `actionlint` after changing GitHub workflow files. It is a supplemental
+workflow syntax/policy check, not a replacement for the canonical Rust gates.
+
 The minimum supported Rust version is 1.85.0. Stable Rust is used otherwise.
 Commit only when the user explicitly requests it.
 

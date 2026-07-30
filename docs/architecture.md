@@ -27,6 +27,17 @@ retrieves only the fixed exact-origin Rustls HTTPS endpoint with redirects and
 content decoding disabled, bounded headers/body, and strict length handling.
 Tests use local fixtures and local HTTP servers.
 
+`upstream` compares the first authoritative feed item with the reviewed runtime
+application contract and the digest-only record of the last assessed
+engineering candidate. Its three-state result prevents a changed feed from
+self-authorizing contract changes.
+
+`acquire-artifact` streams one exact feed-selected ZIP into a private
+mode-0600 file. It rejects redirects, wrong final URLs, encoded or transferred
+responses, duplicate/conflicting headers, incorrect lengths, truncation, and
+oversize before authenticating and preflighting the complete bytes. Only the
+authenticated private file is committed with no replacement.
+
 ### Artifact authentication and stage
 
 `signature` performs strict Ed25519 verification over the complete artifact
@@ -91,6 +102,21 @@ It clears only seven engineering gates that the supplied evidence establishes.
 All external legal, notices/SBOM, signing, automation, full platform-matrix,
 rollback, and independent-review gates remain blocking. The command cannot
 authorize publication.
+
+### Upstream automation
+
+The public hourly workflow executes only `check-upstream`, issue routing, and a
+guarded dispatch decision. Payload handling is isolated in a dispatch-only
+workflow selected by the custom `codex-packager-trusted` self-hosted-runner
+label. That workflow uses reviewed cache contracts, invokes every implemented
+phase, retains all payload-bearing outputs below a private local root, and
+has read-only repository permission with persisted checkout credentials
+disabled. It passes only the bounded digest record to a separate GitHub-hosted
+write job, which validates and proposes that record to Git.
+
+The workflow source does not establish that a runner, protected environment, or
+independent reviewer exists. `TRUSTED_REBUILD_ENABLED` must remain unset or
+`false` until those operational prerequisites are configured.
 
 ## Process and filesystem safety
 

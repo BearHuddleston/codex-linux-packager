@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::io::{self, Write};
+use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::Context;
@@ -9,14 +10,17 @@ use codex_linux_packager::appdir::{AppDirRequest, build_appdir};
 use codex_linux_packager::appimage::{AppImageRequest, LaunchBackend, pack_appimage};
 use codex_linux_packager::archive::{ArtifactContract, ArtifactTrust, inspect_artifact_file};
 use codex_linux_packager::cli::{ArtifactArguments, Cli, LaunchBackendArgument, PackagingCommand};
-use codex_linux_packager::download::download_official_feed;
+use codex_linux_packager::download::{acquire_official_artifact, download_official_feed};
 use codex_linux_packager::extract::extract_stage;
-use codex_linux_packager::feed::{FeedSource, inspect_feed_bytes, inspect_feed_fixture};
+use codex_linux_packager::feed::{
+    FeedInspection, FeedSource, inspect_feed_bytes, inspect_feed_fixture,
+};
 use codex_linux_packager::manifest::{ErrorDocument, to_json_line};
 use codex_linux_packager::native::{NativeBuildRequest, build_native};
 use codex_linux_packager::release::{ReleaseAssessmentRequest, assess_release_readiness};
-use codex_linux_packager::runtime::{RuntimeAssemblyRequest, assemble_runtime};
+use codex_linux_packager::runtime::{RuntimeAssemblyRequest, assemble_runtime, runtime_contract};
 use codex_linux_packager::staging::stage_artifact_file;
+use codex_linux_packager::upstream::{assess_upstream_status, engineering_candidate_record};
 
 fn main() -> ExitCode {
     match run() {
@@ -32,37 +36,45 @@ fn run() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
     match &cli.command {
         PackagingCommand::Inspect { fixture } => {
-            let inspection = if let Some(path) = fixture {
-                inspect_feed_fixture(path).map_err(|error| {
-                    ErrorDocument::new("feed_inspection_failed", error.to_string())
+            emit_result(inspect_feed(fixture.as_deref()), "feed inspection")
+        }
+        PackagingCommand::CheckUpstream { fixture } => {
+            let result = inspect_feed(fixture.as_deref()).and_then(|inspection| {
+                let contract = runtime_contract().map_err(|error| {
+                    ErrorDocument::new("upstream_check_failed", error.to_string())
+                })?;
+                let candidate = engineering_candidate_record().map_err(|error| {
+                    ErrorDocument::new("upstream_check_failed", error.to_string())
+                })?;
+                assess_upstream_status(&inspection, &contract.application, &candidate.application)
+                    .map_err(|error| ErrorDocument::new("upstream_check_failed", error.to_string()))
+            });
+            emit_result(result, "upstream check")
+        }
+        PackagingCommand::AcquireArtifact {
+            url,
+            signature,
+            length,
+            version,
+            build,
+            output,
+        } => {
+            let result = ArtifactTrust::pinned_production()
+                .map_err(anyhow::Error::from)
+                .and_then(|trust| {
+                    let contract = ArtifactContract {
+                        expected_length: *length,
+                        signature_base64: signature.clone(),
+                        version: version.clone(),
+                        build: build.clone(),
+                    };
+                    acquire_official_artifact(url, output, &contract, &trust)
+                        .map_err(anyhow::Error::from)
                 })
-            } else {
-                download_official_feed()
-                    .map_err(|error| ErrorDocument::new("feed_download_failed", error.to_string()))
-                    .and_then(|downloaded| {
-                        inspect_feed_bytes(
-                            &downloaded.bytes,
-                            FeedSource::OfficialHttps {
-                                url: downloaded.final_url,
-                            },
-                        )
-                        .map_err(|error| {
-                            ErrorDocument::new("feed_inspection_failed", error.to_string())
-                        })
-                    })
-            };
-
-            match inspection {
-                Ok(document) => {
-                    write_document(io::stdout().lock(), &document)
-                        .context("write feed inspection")?;
-                    Ok(ExitCode::SUCCESS)
-                }
-                Err(document) => {
-                    write_document(io::stderr().lock(), &document).context("write feed error")?;
-                    Ok(ExitCode::FAILURE)
-                }
-            }
+                .map_err(|error| {
+                    ErrorDocument::new("artifact_acquisition_failed", error.to_string())
+                });
+            emit_result(result, "artifact acquisition")
         }
         PackagingCommand::InspectArtifact { artifact } => {
             let result = artifact_contract(artifact)
@@ -230,6 +242,25 @@ fn run() -> anyhow::Result<ExitCode> {
             });
             emit_result(result, "release readiness assessment")
         }
+    }
+}
+
+fn inspect_feed(fixture: Option<&Path>) -> Result<FeedInspection, ErrorDocument> {
+    if let Some(path) = fixture {
+        inspect_feed_fixture(path)
+            .map_err(|error| ErrorDocument::new("feed_inspection_failed", error.to_string()))
+    } else {
+        download_official_feed()
+            .map_err(|error| ErrorDocument::new("feed_download_failed", error.to_string()))
+            .and_then(|downloaded| {
+                inspect_feed_bytes(
+                    &downloaded.bytes,
+                    FeedSource::OfficialHttps {
+                        url: downloaded.final_url,
+                    },
+                )
+                .map_err(|error| ErrorDocument::new("feed_inspection_failed", error.to_string()))
+            })
     }
 }
 

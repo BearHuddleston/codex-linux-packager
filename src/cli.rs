@@ -57,6 +57,33 @@ pub enum PackagingCommand {
         #[arg(long, value_name = "XML")]
         fixture: Option<PathBuf>,
     },
+    /// Compare the latest feed release with reviewed contract and candidate state.
+    CheckUpstream {
+        /// Inspect a bounded local XML fixture instead of using the network.
+        #[arg(long, value_name = "XML")]
+        fixture: Option<PathBuf>,
+    },
+    /// Download and authenticate one exact feed-selected desktop artifact.
+    AcquireArtifact {
+        /// Exact official artifact URL emitted by `inspect`.
+        #[arg(long, value_name = "HTTPS_URL")]
+        url: String,
+        /// Canonical Sparkle Ed25519 signature over the complete ZIP.
+        #[arg(long, value_name = "BASE64")]
+        signature: String,
+        /// Exact complete byte length declared by the feed.
+        #[arg(long, value_name = "BYTES")]
+        length: u64,
+        /// Exact short version declared by the feed.
+        #[arg(long, value_name = "VERSION")]
+        version: String,
+        /// Exact build version declared by the feed.
+        #[arg(long, value_name = "BUILD")]
+        build: String,
+        /// New authenticated artifact path published with no replacement.
+        #[arg(long, value_name = "ZIP")]
+        output: PathBuf,
+    },
     /// Authenticate and inspect a downloaded desktop artifact.
     InspectArtifact {
         /// Exact feed-derived artifact contract.
@@ -245,6 +272,8 @@ impl PackagingCommand {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Inspect { .. } => "inspect",
+            Self::CheckUpstream { .. } => "check-upstream",
+            Self::AcquireArtifact { .. } => "acquire-artifact",
             Self::InspectArtifact { .. } => "inspect-artifact",
             Self::Stage { .. } => "stage",
             Self::Extract { .. } => "extract",

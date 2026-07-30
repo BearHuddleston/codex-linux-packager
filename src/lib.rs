@@ -18,3 +18,4 @@ pub mod release;
 pub mod runtime;
 pub mod signature;
 pub mod staging;
+pub mod upstream;

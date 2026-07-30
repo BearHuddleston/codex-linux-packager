@@ -43,8 +43,10 @@ desktop-environment coverage, legal authority, signing, or release operations.
   operation or signed checksum set exists.
 - **Signed attestation:** no signed attestation binds an exact commit, tree,
   Cargo.lock, inputs, and output digest set.
-- **Protected automation:** branch, tag, environment, and release automation
-  protection is not evidenced.
+- **Protected automation:** hourly monitoring and a dispatch-only trusted-runner
+  workflow are implemented, but no reviewed runner registration, protected
+  environment, independent reviewer, tag policy, or release automation
+  evidence is bound to the candidate.
 - **Complete platform matrix:** host Wayland/X11 extract-and-run and a
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.
@@ -57,6 +59,10 @@ The machine-readable gate identifiers and required actions are defined in
 `src/release.rs`. External evidence needs a separately designed, protected
 review/signing workflow before a future implementation may clear it; adding a
 boolean CLI flag would not be adequate.
+
+The automatic rebuild workflow is intentionally not release automation. It
+retains the AppImage locally and opens only a digest-record pull request.
+Enabling it does not satisfy the protected-automation gate.
 
 ## Review discipline
 

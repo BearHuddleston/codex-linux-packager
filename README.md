@@ -9,8 +9,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/BearHuddleston/codex-linux-packager/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/BearHuddleston/codex-linux-packager/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3fb950.svg"></a>
+  <img alt="Target: Linux x86_64" src="https://img.shields.io/badge/target-Linux%20x86__64-79c0ff.svg">
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#pipeline">Pipeline</a> ·
+  <a href="#automatic-rebuilds">Automatic rebuilds</a> ·
   <a href="#security-contract">Security</a> ·
   <a href="#release-boundary">Release boundary</a> ·
   <a href="#development">Development</a>
@@ -19,7 +26,7 @@
 <p align="center">
   <img
     src="docs/images/readme-terminal.svg"
-    alt="codex-linux-packager command-line help showing the nine packaging and assessment commands"
+    alt="codex-linux-packager command-line help showing the eleven acquisition, packaging, monitoring, and assessment commands"
     width="100%"
   >
 </p>
@@ -41,7 +48,9 @@
 | Version-matched inputs | Codex CLI 0.146.0-alpha.3.1 / ripgrep 15.2.0 |
 | Persisted documents | Schema `1`, deterministic compact JSON |
 | Producer | `io.github.bearhuddleston.codex-linux-packager.rust` |
-| Release status | Engineering pipeline implemented; publication blocked |
+| Last local candidate | Codex 26.721.81911 build 5973; [digest record](data/engineering-candidate.json) |
+| Automation | Hourly public monitor; trusted rebuild disabled until its isolated runner is configured |
+| Release status | Engineering candidate built; public AppImage publication blocked |
 
 The tool authenticates one official desktop artifact, narrows it to the
 permitted source set, rebuilds native dependencies for the exact Electron ABI,
@@ -65,6 +74,12 @@ Inspect the fixed official Sparkle feed:
 cargo run --locked -- inspect
 ```
 
+Compare the feed with the reviewed contract and last engineering candidate:
+
+```bash
+cargo run --locked -- check-upstream
+```
+
 Or exercise the same bounded parser offline with a synthetic local fixture:
 
 ```bash
@@ -72,36 +87,42 @@ cargo run --locked -- inspect --fixture /absolute/path/to/feed.xml
 ```
 
 `inspect` emits the exact `signature`, `length`, `version`, and `build` required
-by the artifact-authentication commands. The production signing trust root is
-compiled independently and is not caller-selectable.
+by the artifact-acquisition and authentication commands. `acquire-artifact`
+downloads only the exact official URL for that version, rejects redirects and
+ambiguous HTTP responses, authenticates the complete bytes with the
+independently compiled production trust root, and publishes with no
+replacement.
 
 ## Pipeline
 
 ```text
-Sparkle feed
-    │
-    ▼
-inspect ──► inspect-artifact ──► stage ──► extract
-                                      │
-                                      ▼
-                               build-native
-                                      │
-                                      ▼
-                              assemble-runtime
-                                      │
-                                      ▼
-                                build-appdir
-                                      │
-                                      ▼
-                               pack-appimage
-                                      │
-                                      ▼
-                             release-readiness
+hourly monitor ──► check-upstream ──► review changed contracts
+                         │                    │
+                         │ contract current   │ reviewed merge
+                         ▼                    ▼
+Sparkle feed ──► inspect ──► acquire-artifact ──► stage ──► extract
+                                                        │
+                                                        ▼
+                                                 build-native
+                                                        │
+                                                        ▼
+                                                assemble-runtime
+                                                        │
+                                                        ▼
+                                                  build-appdir ×2
+                                                        │
+                                                        ▼
+                                                 pack-appimage
+                                                        │
+                                                        ▼
+                                               release-readiness
 ```
 
 | Command | Responsibility | Result |
 | --- | --- | --- |
 | `inspect` | Parse the fixed feed or a bounded local fixture | Typed release metadata |
+| `check-upstream` | Compare latest feed, reviewed application contract, and last candidate | `current`, `review_contract_update`, or `rebuild_candidate` |
+| `acquire-artifact` | Download, authenticate, preflight, and no-replace publish the exact feed-selected ZIP | Authenticated source ZIP plus acquisition receipt |
 | `inspect-artifact` | Authenticate and preflight the complete desktop ZIP | Reconciled artifact report |
 | `stage` | Publish only the authenticated ZIP, `app.asar`, and provenance | Private schema-1 stage generation |
 | `extract` | Expand integrity-verified packed ASAR files | New no-replace extraction generation |
@@ -136,6 +157,39 @@ directories.
 `--allow-network` flag is recorded in provenance. `pack-appimage` requires two
 independently constructed AppDirs, digest-matched packaging tools, both Wayland
 and X11 backends, and the exact locally verified older-GLIBC image ID.
+
+## Automatic rebuilds
+
+The public [`upstream-monitor.yml`](.github/workflows/upstream-monitor.yml)
+runs hourly and can also be dispatched manually. It reads only the official
+feed and repository contracts. A new release opens or refreshes an
+`upstream-update` issue.
+
+The transition is deliberately two-step:
+
+1. `review_contract_update` means the feed moved. Automation stops until the
+   downloaded source is authenticated and every Electron, native-package,
+   Codex CLI, ripgrep, patch, and tool pin is independently reconciled in a
+   reviewed change.
+2. `rebuild_candidate` means that reviewed contract is current while the
+   candidate record is stale. If `TRUSTED_REBUILD_ENABLED=true`, the monitor
+   dispatches [`rebuild-candidate.yml`](.github/workflows/rebuild-candidate.yml)
+   to a dedicated `codex-packager-trusted` runner.
+
+That trusted workflow acquires the exact source, executes every implemented
+phase offline where required, builds twice, performs real Wayland/X11 and
+older-GLIBC launches, retains the AppImage beneath a configured local output
+root, and opens a pull request containing only the new digest record. It never
+uploads the AppImage or proprietary inputs to GitHub and never creates a
+release. The payload-handling job has read-only repository permission and no
+persisted checkout credential; only a separate GitHub-hosted digest-record job
+can write the pull request.
+
+No matching self-hosted runner or enablement variable is installed by cloning
+the repository. Configure a dedicated or ephemeral runner and its reviewed
+cache before enabling dispatch; do not expose a general-purpose user
+workstation to untrusted workflows. The exact operational contract is in
+[`docs/automated-rebuilds.md`](docs/automated-rebuilds.md).
 
 ## Security contract
 
@@ -180,6 +234,10 @@ and FUSE matrix, rollback/recovery rehearsal, and frozen review of one exact
 commit and artifact digest set. See
 [`docs/release-gates.md`](docs/release-gates.md).
 
+In particular, “automatic rebuild” does not mean “automatic public release.”
+The source repository is public; the generated AppImage is not a GitHub
+release.
+
 ## Repository boundary
 
 Git must never contain OpenAI or Codex application payloads, extracted bundles,
@@ -213,6 +271,7 @@ Useful project documents:
 | [`docs/architecture.md`](docs/architecture.md) | Implemented data flow and trust boundaries |
 | [`docs/threat-model.md`](docs/threat-model.md) | Binding security scope |
 | [`docs/release-gates.md`](docs/release-gates.md) | Engineering evidence versus publication approval |
+| [`docs/automated-rebuilds.md`](docs/automated-rebuilds.md) | Scheduled detection and trusted-runner operating contract |
 | [`docs/dependencies.md`](docs/dependencies.md) | Exact dependency-selection rationale |
 | [`docs/decisions/`](docs/decisions/) | Accepted architecture decision records |
 

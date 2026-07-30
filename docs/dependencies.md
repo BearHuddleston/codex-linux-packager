@@ -25,9 +25,10 @@ proprietary payloads.
 
 ## Security-sensitive parsing and cryptography
 
-- `ureq` 3.3.0: small blocking HTTPS client with only the Rustls feature.
-  Redirects and content decoding are disabled by application policy; response
-  identity, headers, lengths, and bodies remain bounded. MIT/Apache-2.0.
+- `ureq` 3.3.0: small blocking HTTPS client with only the Rustls feature for
+  the fixed feed and exact artifact acquisition. Redirects and content decoding
+  are disabled by application policy; response identity, headers, lengths, and
+  bodies remain bounded. MIT/Apache-2.0.
 - `quick-xml` 0.41.0: event-driven bounded feed and XML property-list parsing.
   This release contains the fixes for RUSTSEC-2026-0194 and
   RUSTSEC-2026-0195. Dangerous or ambiguous constructs are rejected by

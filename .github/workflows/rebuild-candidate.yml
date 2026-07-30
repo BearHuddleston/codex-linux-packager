@@ -1,0 +1,429 @@
+name: Rebuild engineering candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact reviewed Codex application version
+        required: true
+        type: string
+      build:
+        description: Exact reviewed Codex application build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trusted-codex-rebuild
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  PACKAGER_CACHE_ROOT: ${{ vars.PACKAGER_CACHE_ROOT }}
+  PACKAGER_OUTPUT_ROOT: ${{ vars.PACKAGER_OUTPUT_ROOT }}
+  PACKAGER_OCI_RUNTIME_SHA256: ${{ vars.PACKAGER_OCI_RUNTIME_SHA256 }}
+  PACKAGER_SUDO_SHA256: ${{ vars.PACKAGER_SUDO_SHA256 }}
+  PACKAGER_BUBBLEWRAP_SHA256: ${{ vars.PACKAGER_BUBBLEWRAP_SHA256 }}
+  PACKAGER_READELF_SHA256: ${{ vars.PACKAGER_READELF_SHA256 }}
+  PACKAGER_OLDER_GLIBC_IMAGE_ID: ${{ vars.PACKAGER_OLDER_GLIBC_IMAGE_ID }}
+
+jobs:
+  rebuild:
+    name: Rebuild, verify, and retain locally
+    runs-on: [self-hosted, linux, x64, codex-packager-trusted]
+    environment: engineering-candidate
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    outputs:
+      candidate_record: ${{ steps.candidate.outputs.record }}
+      source_commit: ${{ steps.candidate.outputs.source_commit }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate trusted-runner configuration
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" ]]
+          [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
+          [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
+          for variable in \
+            PACKAGER_CACHE_ROOT \
+            PACKAGER_OUTPUT_ROOT \
+            PACKAGER_OCI_RUNTIME_SHA256 \
+            PACKAGER_SUDO_SHA256 \
+            PACKAGER_BUBBLEWRAP_SHA256 \
+            PACKAGER_READELF_SHA256 \
+            PACKAGER_OLDER_GLIBC_IMAGE_ID
+          do
+            value="${!variable:-}"
+            [[ -n "${value}" ]]
+            [[ "${value}" != *$'\n'* ]]
+          done
+          [[ "${PACKAGER_CACHE_ROOT}" == /* ]]
+          [[ "${PACKAGER_OUTPUT_ROOT}" == /* ]]
+          [[ -d "${PACKAGER_CACHE_ROOT}" ]]
+          [[ -d "${PACKAGER_OUTPUT_ROOT}" ]]
+          for digest in \
+            "${PACKAGER_OCI_RUNTIME_SHA256}" \
+            "${PACKAGER_SUDO_SHA256}" \
+            "${PACKAGER_BUBBLEWRAP_SHA256}" \
+            "${PACKAGER_READELF_SHA256}"
+          do
+            [[ "${digest}" =~ ^[0-9a-f]{64}$ ]]
+          done
+          [[ "${PACKAGER_OLDER_GLIBC_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$(sha256sum /usr/bin/docker | cut -d ' ' -f 1)" == "${PACKAGER_OCI_RUNTIME_SHA256}" ]]
+          [[ "$(sha256sum /usr/bin/sudo | cut -d ' ' -f 1)" == "${PACKAGER_SUDO_SHA256}" ]]
+          [[ "$(sha256sum /usr/bin/bwrap | cut -d ' ' -f 1)" == "${PACKAGER_BUBBLEWRAP_SHA256}" ]]
+          [[ "$(sha256sum /usr/bin/readelf | cut -d ' ' -f 1)" == "${PACKAGER_READELF_SHA256}" ]]
+          sudo -n /usr/bin/docker image inspect \
+            "${PACKAGER_OLDER_GLIBC_IMAGE_ID}" >/dev/null
+          test -n "${DISPLAY:-}"
+          test -n "${WAYLAND_DISPLAY:-}"
+          test -n "${XDG_RUNTIME_DIR:-}"
+          rustc --version
+          cargo --version
+          node --version
+          npm --version
+
+      - name: Allocate a private retained generation
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          umask 077
+          generation="${PACKAGER_OUTPUT_ROOT}/candidate-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir --mode=0700 -- "${generation}"
+          mkdir --mode=0700 -- "${generation}/evidence"
+          {
+            printf 'PACKAGER_GENERATION=%s\n' "${generation}"
+            printf 'PACKAGER_BIN=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-packager"
+          } >>"${GITHUB_ENV}"
+
+      - name: Build the locked packager
+        run: cargo build --release --locked
+
+      - name: Require the guarded rebuild state
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          "${PACKAGER_BIN}" check-upstream >"${PACKAGER_GENERATION}/evidence/upstream-status.json"
+          jq -e \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            '
+              .action == "rebuild_candidate" and
+              .automatic_rebuild_permitted == true and
+              .contract_update_required == false and
+              .latest_release.version == $version and
+              .latest_release.build == $build and
+              .contracted_application.version == $version and
+              .contracted_application.build == $build
+            ' \
+            "${PACKAGER_GENERATION}/evidence/upstream-status.json" >/dev/null
+
+      - name: Resolve and verify the reviewed cache
+        run: |
+          set -euo pipefail
+          electron_version="$(jq -r '.electron.version' data/runtime-contract.json)"
+          codex_version="$(jq -r '.codex.version' data/runtime-contract.json)"
+          appimagetool_release="$(jq -r '.appimagetool.release' data/appimage-contract.json)"
+          type2_release="$(jq -r '.type2_runtime.release' data/appimage-contract.json)"
+          electron_directory="${PACKAGER_CACHE_ROOT}/electron-${electron_version}"
+          codex_directory="${PACKAGER_CACHE_ROOT}/codex-${codex_version}"
+          appimage_directory="${PACKAGER_CACHE_ROOT}/appimage-tools-${appimagetool_release}-${type2_release}"
+          electron_zip="${electron_directory}/electron-v${electron_version}-linux-x64.zip"
+          electron_headers="${electron_directory}/node-v${electron_version}-headers.tar.gz"
+          codex_package="${codex_directory}/codex-package-x86_64-unknown-linux-musl.tar.gz"
+          appimagetool="${appimage_directory}/appimagetool-x86_64.AppImage"
+          type2_runtime="${appimage_directory}/runtime-x86_64"
+          npm_cache="${PACKAGER_CACHE_ROOT}/npm-native"
+          test -d "${npm_cache}"
+          for path in \
+            "${electron_zip}" \
+            "${electron_headers}" \
+            "${codex_package}" \
+            "${appimagetool}" \
+            "${type2_runtime}"
+          do
+            test -f "${path}"
+          done
+          [[ "$(sha256sum "${electron_zip}" | cut -d ' ' -f 1)" == "$(jq -r '.electron.linux_x64_zip_sha256' data/runtime-contract.json)" ]]
+          [[ "$(sha256sum "${electron_headers}" | cut -d ' ' -f 1)" == "$(jq -r '.electron.headers_tar_sha256' data/native-contract.json)" ]]
+          [[ "$(sha256sum "${codex_package}" | cut -d ' ' -f 1)" == "$(jq -r '.codex.package_archive_sha256' data/runtime-contract.json)" ]]
+          [[ "$(sha256sum "${appimagetool}" | cut -d ' ' -f 1)" == "$(jq -r '.appimagetool.sha256' data/appimage-contract.json)" ]]
+          [[ "$(sha256sum "${type2_runtime}" | cut -d ' ' -f 1)" == "$(jq -r '.type2_runtime.sha256' data/appimage-contract.json)" ]]
+          {
+            printf 'PACKAGER_ELECTRON_ZIP=%s\n' "${electron_zip}"
+            printf 'PACKAGER_ELECTRON_HEADERS=%s\n' "${electron_headers}"
+            printf 'PACKAGER_CODEX_PACKAGE=%s\n' "${codex_package}"
+            printf 'PACKAGER_APPIMAGETOOL=%s\n' "${appimagetool}"
+            printf 'PACKAGER_TYPE2_RUNTIME=%s\n' "${type2_runtime}"
+            printf 'PACKAGER_NPM_CACHE=%s\n' "${npm_cache}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Acquire and authenticate the selected source artifact
+        run: |
+          set -euo pipefail
+          status="${PACKAGER_GENERATION}/evidence/upstream-status.json"
+          "${PACKAGER_BIN}" acquire-artifact \
+            --url "$(jq -r '.latest_release.artifact.url' "${status}")" \
+            --signature "$(jq -r '.latest_release.artifact.ed25519_signature' "${status}")" \
+            --length "$(jq -r '.latest_release.artifact.length' "${status}")" \
+            --version "$(jq -r '.latest_release.version' "${status}")" \
+            --build "$(jq -r '.latest_release.build' "${status}")" \
+            --output "${PACKAGER_GENERATION}/source.zip" \
+            >"${PACKAGER_GENERATION}/evidence/artifact-acquisition.json"
+
+      - name: Authenticate and stage the narrow source set
+        run: |
+          set -euo pipefail
+          status="${PACKAGER_GENERATION}/evidence/upstream-status.json"
+          "${PACKAGER_BIN}" stage \
+            --artifact "${PACKAGER_GENERATION}/source.zip" \
+            --signature "$(jq -r '.latest_release.artifact.ed25519_signature' "${status}")" \
+            --length "$(jq -r '.latest_release.artifact.length' "${status}")" \
+            --version "$(jq -r '.latest_release.version' "${status}")" \
+            --build "$(jq -r '.latest_release.build' "${status}")" \
+            --output "${PACKAGER_GENERATION}/stage" \
+            >"${PACKAGER_GENERATION}/evidence/stage.json"
+
+      - name: Rebuild and probe native modules offline
+        run: |
+          set -euo pipefail
+          "${PACKAGER_BIN}" build-native \
+            --stage "${PACKAGER_GENERATION}/stage" \
+            --electron-zip "${PACKAGER_ELECTRON_ZIP}" \
+            --electron-headers "${PACKAGER_ELECTRON_HEADERS}" \
+            --npm-cache "${PACKAGER_NPM_CACHE}" \
+            --work "${PACKAGER_GENERATION}/native-work" \
+            --output "${PACKAGER_GENERATION}/native" \
+            --node /usr/bin/node \
+            --npm /usr/bin/npm \
+            --oci-runtime /usr/bin/docker \
+            --oci-runtime-sha256 "${PACKAGER_OCI_RUNTIME_SHA256}" \
+            --sudo-program /usr/bin/sudo \
+            --sudo-sha256 "${PACKAGER_SUDO_SHA256}" \
+            >"${PACKAGER_GENERATION}/evidence/native.json"
+
+      - name: Assemble the Linux x86_64 runtime
+        run: |
+          set -euo pipefail
+          native_manifest="${PACKAGER_GENERATION}/native/manifest.json"
+          native_sha256="$(sha256sum "${native_manifest}" | cut -d ' ' -f 1)"
+          "${PACKAGER_BIN}" assemble-runtime \
+            --stage "${PACKAGER_GENERATION}/stage" \
+            --native "${PACKAGER_GENERATION}/native" \
+            --native-manifest-sha256 "${native_sha256}" \
+            --electron-zip "${PACKAGER_ELECTRON_ZIP}" \
+            --codex-package "${PACKAGER_CODEX_PACKAGE}" \
+            --output "${PACKAGER_GENERATION}/runtime" \
+            >"${PACKAGER_GENERATION}/evidence/runtime.json"
+
+      - name: Build two deterministic AppDirs
+        run: |
+          set -euo pipefail
+          runtime_manifest="${PACKAGER_GENERATION}/runtime/manifest.json"
+          runtime_sha256="$(sha256sum "${runtime_manifest}" | cut -d ' ' -f 1)"
+          source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          for suffix in a b; do
+            "${PACKAGER_BIN}" build-appdir \
+              --runtime "${PACKAGER_GENERATION}/runtime" \
+              --runtime-manifest-sha256 "${runtime_sha256}" \
+              --source-date-epoch "${source_date_epoch}" \
+              --output "${PACKAGER_GENERATION}/appdir-${suffix}" \
+              >"${PACKAGER_GENERATION}/evidence/appdir-${suffix}.json"
+          done
+
+      - name: Build twice, audit, and genuinely launch the AppImage
+        run: |
+          set -euo pipefail
+          appdir_a="${PACKAGER_GENERATION}/evidence/appdir-a.json"
+          appdir_b="${PACKAGER_GENERATION}/evidence/appdir-b.json"
+          "${PACKAGER_BIN}" pack-appimage \
+            --appdir "${PACKAGER_GENERATION}/appdir-a" \
+            --appdir-manifest-sha256 "$(sha256sum "${appdir_a}" | cut -d ' ' -f 1)" \
+            --reproduction-appdir "${PACKAGER_GENERATION}/appdir-b" \
+            --reproduction-appdir-manifest-sha256 "$(sha256sum "${appdir_b}" | cut -d ' ' -f 1)" \
+            --appimagetool "${PACKAGER_APPIMAGETOOL}" \
+            --type2-runtime "${PACKAGER_TYPE2_RUNTIME}" \
+            --bubblewrap /usr/bin/bwrap \
+            --bubblewrap-sha256 "${PACKAGER_BUBBLEWRAP_SHA256}" \
+            --readelf /usr/bin/readelf \
+            --readelf-sha256 "${PACKAGER_READELF_SHA256}" \
+            --oci-runtime /usr/bin/docker \
+            --oci-runtime-sha256 "${PACKAGER_OCI_RUNTIME_SHA256}" \
+            --sudo-program /usr/bin/sudo \
+            --sudo-sha256 "${PACKAGER_SUDO_SHA256}" \
+            --older-glibc-image-id "${PACKAGER_OLDER_GLIBC_IMAGE_ID}" \
+            --launch-backend wayland \
+            --launch-backend x11 \
+            --output "${PACKAGER_GENERATION}/appimage" \
+            >"${PACKAGER_GENERATION}/evidence/appimage.json"
+
+      - name: Assess the exact candidate
+        run: |
+          set -euo pipefail
+          artifact="${PACKAGER_GENERATION}/appimage/codex-desktop-unofficial-x86_64.AppImage"
+          "${PACKAGER_BIN}" release-readiness \
+            --stage "${PACKAGER_GENERATION}/stage" \
+            --native-manifest "${PACKAGER_GENERATION}/native/manifest.json" \
+            --runtime-manifest "${PACKAGER_GENERATION}/runtime/manifest.json" \
+            --appdir-manifest "${PACKAGER_GENERATION}/evidence/appdir-a.json" \
+            --appimage-provenance "${PACKAGER_GENERATION}/appimage/provenance.json" \
+            --artifact "${artifact}" \
+            --cargo-lock "${GITHUB_WORKSPACE}/Cargo.lock" \
+            >"${PACKAGER_GENERATION}/evidence/release-readiness.json"
+          jq -e '
+            .engineering_candidate == true and
+            .stable_publication_permitted == false and
+            .release_status == "not_release_approved_do_not_publish"
+          ' "${PACKAGER_GENERATION}/evidence/release-readiness.json" >/dev/null
+
+      - name: Prepare the digest-only candidate record
+        id: candidate
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          readiness="${PACKAGER_GENERATION}/evidence/release-readiness.json"
+          candidate="${PACKAGER_GENERATION}/evidence/engineering-candidate.json"
+          jq -n \
+            --arg producer "io.github.bearhuddleston.codex-linux-packager.rust" \
+            --arg source_commit "${GITHUB_SHA}" \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            --slurpfile readiness "${readiness}" \
+            '{
+              schema: 1,
+              producer: $producer,
+              kind: "engineering_candidate_record",
+              source_commit: $source_commit,
+              application: {
+                version: $version,
+                build: $build
+              },
+              assessment_scope: $readiness[0].assessment_scope,
+              engineering_candidate: $readiness[0].engineering_candidate,
+              stable_publication_permitted: $readiness[0].stable_publication_permitted,
+              release_status: $readiness[0].release_status
+            }' >"${candidate}"
+          {
+            printf 'record=%s\n' "$(base64 --wrap=0 "${candidate}")"
+            printf 'source_commit=%s\n' "${GITHUB_SHA}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Record retained local output
+        if: always()
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          {
+            printf '### Trusted engineering rebuild\n\n'
+            printf -- '- Application: `%s` build `%s`\n' \
+              "${REQUESTED_VERSION}" "${REQUESTED_BUILD}"
+            printf -- '- Local generation: `%s`\n' \
+              "${PACKAGER_GENERATION:-not-allocated}"
+            printf -- '- GitHub payload upload: `none`\n'
+            printf -- '- Stable publication: `not permitted`\n'
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  record:
+    name: Propose the digest-only candidate record
+    needs: rebuild
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Validate and install the digest-only record
+        env:
+          CANDIDATE_RECORD: ${{ needs.rebuild.outputs.candidate_record }}
+          SOURCE_COMMIT: ${{ needs.rebuild.outputs.source_commit }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          printf '%s' "${CANDIDATE_RECORD}" |
+            base64 --decode >data/engineering-candidate.json
+          jq -e \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .kind == "engineering_candidate_record" and
+              .source_commit == $source_commit and
+              .application.version == $version and
+              .application.build == $build and
+              .engineering_candidate == true and
+              .stable_publication_permitted == false and
+              .release_status == "not_release_approved_do_not_publish"
+            ' data/engineering-candidate.json >/dev/null
+          cargo test --locked --test upstream_monitor --test repository_boundary
+
+      - name: Open a reviewable digest-record pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          gh label create engineering-candidate \
+            --repo "${GITHUB_REPOSITORY}" \
+            --color 1d76db \
+            --description "Digest-only record produced by the isolated engineering rebuild" \
+            --force
+          branch="automation/candidate-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "${branch}"
+          git add -- data/engineering-candidate.json
+          git commit -m "chore: record Codex ${REQUESTED_VERSION} engineering candidate"
+          git push origin "HEAD:refs/heads/${branch}"
+          body_file="${RUNNER_TEMP}/candidate-pr.md"
+          {
+            printf 'Records the digest-only result of trusted rebuild run `%s`.\n\n' \
+              "${GITHUB_RUN_ID}"
+            printf '%s\n' \
+              'The AppImage and proprietary inputs remain only in the configured trusted-runner output root and were not uploaded to GitHub.'
+            printf '\n%s\n' \
+              'This record is an engineering candidate only. `stable_publication_permitted` remains false and no release was created.'
+          } >"${body_file}"
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --base "${DEFAULT_BRANCH}" \
+            --head "${branch}" \
+            --title "chore: record Codex ${REQUESTED_VERSION} build ${REQUESTED_BUILD}" \
+            --body-file "${body_file}" \
+            --label engineering-candidate
