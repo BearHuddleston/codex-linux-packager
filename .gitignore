@@ -1,0 +1,59 @@
+# Rust build outputs
+/target/
+
+# Acquired or generated packaging inputs and outputs
+/work/
+/cache/
+/dist/
+/build/
+/out/
+*.AppImage
+*.asar
+*.dmg
+*.delta
+*.zsync
+*.deb
+*.rpm
+*.pkg.tar.*
+*.node
+*.so
+*.dylib
+*.exe
+*.pkg
+*.app/
+Codex.app/
+
+# Archives and compressed payloads (fixtures are generated at test time)
+*.zip
+*.tar
+*.tar.*
+*.gz
+*.xz
+*.zst
+*.7z
+*.rar
+
+# Upstream and branding assets
+*.icns
+*.ico
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# Credentials and local configuration
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets.json
+
+# Editors, tools, and operating systems
+/.hermes/
+/.ruff_cache/
+/.idea/
+/.vscode/
+*.swp
+.DS_Store

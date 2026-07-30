@@ -1,0 +1,27 @@
+[package]
+name = "codex-linux-packager"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Auditable Linux x86_64 packaging CLI for authenticated Codex desktop artifacts"
+license = "MIT"
+repository = "https://github.com/BearHuddleston/codex-linux-packager"
+publish = false
+
+[dependencies]
+anyhow = "=1.0.104"
+clap = { version = "=4.6.4", features = ["derive"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+thiserror = "=2.0.19"
+
+[lib]
+name = "codex_linux_packager"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codex-linux-packager"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
