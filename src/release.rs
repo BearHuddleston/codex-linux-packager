@@ -110,7 +110,8 @@ pub struct ReleaseReadinessReport {
     pub assessment_scope: ReleaseAssessmentScope,
     /// True after the implemented engineering pipeline evidence validates.
     pub engineering_candidate: bool,
-    /// True only if every independently applicable release gate is satisfied.
+    /// True only if every cataloged technical and operational gate is
+    /// satisfied. Publisher legal decisions are outside this assessment.
     pub stable_publication_permitted: bool,
     /// Every gate in stable order, including both cleared and uncleared gates.
     pub gates: Vec<ReleaseGate>,
@@ -135,7 +136,8 @@ pub enum ReleaseError {
     Evidence(String),
 }
 
-/// Returns every independently applicable gate in stable order.
+/// Returns every machine-assessed technical and operational gate in stable
+/// order. Publisher legal decisions are deliberately outside this catalog.
 #[must_use]
 pub fn release_gate_catalog() -> Vec<ReleaseGate> {
     [
@@ -173,16 +175,6 @@ pub fn release_gate_catalog() -> Vec<ReleaseGate> {
             "controlled_older_glibc_launch",
             "No controlled older-glibc launch evidence has been assessed.",
             "Launch the exact artifact in a digest-pinned older-glibc container or VM.",
-        ),
-        (
-            "payload_redistribution_authority",
-            "No written OpenAI payload redistribution authority is recorded.",
-            "Obtain and independently review written redistribution authority.",
-        ),
-        (
-            "trademark_and_branding_authority",
-            "No written OpenAI trademark or branding authority is recorded.",
-            "Obtain and independently review written trademark and branding authority, or remove all protected use.",
         ),
         (
             "complete_notices_and_deterministic_sbom",
@@ -232,7 +224,7 @@ pub fn release_gate_catalog() -> Vec<ReleaseGate> {
 }
 
 /// Re-authenticates and validates one exact engineering evidence chain, then
-/// emits all still-independent release blockers without claiming approval.
+/// emits all cataloged release blockers without making a legal determination.
 pub fn assess_release_readiness(
     request: &ReleaseAssessmentRequest,
 ) -> Result<ReleaseReadinessReport, ReleaseError> {

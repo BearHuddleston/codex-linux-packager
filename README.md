@@ -225,14 +225,18 @@ consumer revalidates both the identity and semantics of the evidence it reads.
 `release-readiness` validates the stage, native, runtime, AppDir, AppImage,
 artifact, and Cargo lockfile chain. A successful invocation means only that the
 assessment completed. Read `stable_publication_permitted` and
-`blocking_gate_ids`; with the current external gates, the expected publication
+`blocking_gate_ids`; with the current cataloged gates, the expected publication
 value is `false`.
 
-Stable publication remains blocked on independently cleared legal authority,
-complete notices and SBOM, protected signing and automation, a complete desktop
-and FUSE matrix, rollback/recovery rehearsal, and frozen review of one exact
-commit and artifact digest set. See
+Stable publication remains blocked on complete notices and SBOM, protected
+signing and automation, a complete desktop and FUSE matrix, rollback/recovery
+rehearsal, and frozen review of one exact commit and artifact digest set. See
 [`docs/release-gates.md`](docs/release-gates.md).
+
+The gate catalog deliberately does not decide whether a publisher has payload
+redistribution or trademark authority. Those are publisher responsibilities
+outside `release-readiness`; `stable_publication_permitted` is not a legal
+opinion.
 
 In particular, “automatic rebuild” does not mean “automatic public release.”
 The source repository is public; the generated AppImage is not a GitHub

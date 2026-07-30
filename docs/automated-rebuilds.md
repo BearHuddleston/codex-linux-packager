@@ -137,6 +137,7 @@ monitor may retry only after no run or candidate pull request remains active.
 This automation rebuilds engineering candidates; it does not publish them.
 `stable_publication_permitted` remains false while any gate in
 `docs/release-gates.md` is blocking. Enabling the runner does not establish
-payload redistribution rights, trademark rights, complete notices/SBOM,
-protected signing, signed attestation, complete desktop/FUSE coverage,
-rollback readiness, or independent approval.
+complete notices/SBOM, protected signing, signed attestation, complete
+desktop/FUSE coverage, rollback readiness, or independent approval. It also
+does not evaluate or establish the publisher's payload redistribution or
+trademark authority, which is outside the machine gate catalog.

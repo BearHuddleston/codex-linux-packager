@@ -3,11 +3,16 @@
 Canonical tests and a verified local AppImage are engineering evidence, not
 release approval. No public binary or stable AppImage may be published until
 every applicable gate is explicitly cleared for one exact source commit/tree
-and artifact digest set.
+and artifact digest set. The publisher remains responsible for determining
+whether it has permission to redistribute payloads and use relevant names or
+marks; those legal decisions are deliberately outside the machine gate
+catalog.
 
 `release-readiness` produces the authoritative schema-1 assessment shape. It
 re-authenticates and validates the supplied engineering evidence but does not
-accept self-asserted legal or operational approvals. A successful assessment
+make legal determinations or accept self-asserted operational approvals. Its
+`stable_publication_permitted` field describes only the cataloged technical
+and operational gates; it is not a legal opinion. A successful assessment
 command can therefore still—and currently must—report
 `stable_publication_permitted: false`.
 
@@ -27,15 +32,11 @@ For one exact evidence set, the command can establish:
   Debian/glibc-2.36 baseline with networking disabled.
 
 Changing any reviewed bytes requires a new assessment. These gates do not imply
-desktop-environment coverage, legal authority, signing, or release operations.
+desktop-environment coverage, signing, release operations, or a determination
+of publisher rights.
 
 ## Gates presently blocking stable publication
 
-- **Payload redistribution authority:** independently reviewed written OpenAI
-  authority is not recorded.
-- **Trademark and branding authority:** independently reviewed written
-  authority is not recorded; the generic tooling icon does not settle all name
-  and product-identity questions.
 - **Complete notices and deterministic SBOM:** the tooling dependency policy is
   documented, but complete notices and an artifact-bound SBOM for the
   proprietary payload and every redistributed component are not complete.
@@ -56,7 +57,7 @@ desktop-environment coverage, legal authority, signing, or release operations.
   candidate source and artifact bytes.
 
 The machine-readable gate identifiers and required actions are defined in
-`src/release.rs`. External evidence needs a separately designed, protected
+`src/release.rs`. Operational evidence needs a separately designed, protected
 review/signing workflow before a future implementation may clear it; adding a
 boolean CLI flag would not be adequate.
 

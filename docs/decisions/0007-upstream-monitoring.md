@@ -37,6 +37,7 @@ rebuild dispatch remains disabled. This is an explicit operational
 prerequisite, not a hidden claim of completed protected automation.
 
 The candidate record is monitoring state and evidence routing. It cannot clear
-legal, branding, signing, platform-matrix, recovery, or independent-review
-gates, and it never changes the `not_release_approved_do_not_publish`
-disposition.
+signing, platform-matrix, recovery, or independent-review gates, and it never
+changes the `not_release_approved_do_not_publish` disposition. It also makes no
+determination about publisher redistribution or trademark authority, which is
+outside the machine gate catalog under Decision 0008.
