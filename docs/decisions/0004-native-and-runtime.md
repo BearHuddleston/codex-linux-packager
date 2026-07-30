@@ -32,7 +32,7 @@ these probes.
 
 Runtime assembly independently validates the stage and native manifest, then
 combines the exact official Electron Linux x64 ZIP with the exact official
-Codex 0.146.0-alpha.3.1 Linux x86_64-musl package. Authenticated source markers
+Codex 0.146.0-alpha.9.2 Linux x86_64-musl package. Authenticated source markers
 must reconcile the Codex and ripgrep identities. Every considered file is
 included or omitted with an explicit disposition; Mach-O, PE, and
 foreign-architecture ELF content is not silently copied.
