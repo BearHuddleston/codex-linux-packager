@@ -1,0 +1,411 @@
+name: Prepare protected draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact reviewed Codex application version
+        required: true
+        type: string
+      build:
+        description: Exact reviewed Codex application build
+        required: true
+        type: string
+      source_commit:
+        description: Exact candidate source commit
+        required: true
+        type: string
+      candidate_generation:
+        description: Retained candidate generation basename
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-codex-release
+  cancel-in-progress: false
+
+env:
+  CARGO_NET_OFFLINE: "true"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  PACKAGER_OUTPUT_ROOT: ${{ vars.PACKAGER_OUTPUT_ROOT }}
+  PACKAGER_CARGO_DENY: ${{ vars.PACKAGER_CARGO_DENY }}
+  PACKAGER_CARGO_DENY_SHA256: ${{ vars.PACKAGER_CARGO_DENY_SHA256 }}
+
+jobs:
+  sign:
+    name: Sign and retain release evidence
+    runs-on: [self-hosted, linux, x64, codex-packager-trusted]
+    environment: release-signing
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the exact retained candidate
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CANDIDATE_GENERATION: ${{ inputs.candidate_generation }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
+          [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
+          [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${CANDIDATE_GENERATION}" =~ ^candidate-[0-9]+([.][0-9]+)+-[0-9]+-run-[0-9]+-[0-9]+$ ]]
+          [[ "${CANDIDATE_GENERATION}" == "candidate-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-"* ]]
+          [[ "${PACKAGER_OUTPUT_ROOT}" == /* ]]
+          [[ "${PACKAGER_CARGO_DENY}" == /* ]]
+          [[ "${PACKAGER_CARGO_DENY_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ -d "${PACKAGER_OUTPUT_ROOT}" ]]
+          [[ ! -L "${PACKAGER_OUTPUT_ROOT}" ]]
+          [[ -f "${PACKAGER_CARGO_DENY}" ]]
+          [[ ! -L "${PACKAGER_CARGO_DENY}" ]]
+          [[ "$(sha256sum "${PACKAGER_CARGO_DENY}" | cut -d ' ' -f 1)" == "${PACKAGER_CARGO_DENY_SHA256}" ]]
+          jq -e \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .kind == "engineering_candidate_record" and
+              .application.version == $version and
+              .application.build == $build and
+              .source_commit == $source_commit and
+              .engineering_candidate == true and
+              .stable_publication_permitted == false and
+              .release_status == "not_release_approved_do_not_publish"
+            ' data/engineering-candidate.json >/dev/null
+          git cat-file -e "${SOURCE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "${SOURCE_COMMIT}" "origin/${DEFAULT_BRANCH}"
+          git switch --detach "${SOURCE_COMMIT}"
+          source_tree="$(git rev-parse "${SOURCE_COMMIT}^{tree}")"
+          source_epoch="$(git show -s --format=%ct "${SOURCE_COMMIT}")"
+          created_at="$(date --utc --date="@${source_epoch}" '+%Y-%m-%dT%H:%M:%SZ')"
+          candidate_root="${PACKAGER_OUTPUT_ROOT}/${CANDIDATE_GENERATION}"
+          release_root="${candidate_root}/release-draft-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ -d "${candidate_root}" ]]
+          [[ ! -L "${candidate_root}" ]]
+          for path in \
+            "${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            "${candidate_root}/appimage/provenance.json" \
+            "${candidate_root}/evidence/appdir-a.json" \
+            "${candidate_root}/evidence/release-readiness.json"
+          do
+            [[ -f "${path}" ]]
+            [[ ! -L "${path}" ]]
+          done
+          EXPECTED_ARTIFACT_SHA256="$(jq -r '.assessment_scope.artifact_sha256' data/engineering-candidate.json)"
+          EXPECTED_ARTIFACT_BYTES="$(jq -r '.assessment_scope.artifact_bytes' data/engineering-candidate.json)"
+          EXPECTED_APPDIR_SHA256="$(jq -r '.assessment_scope.appdir_manifest_sha256' data/engineering-candidate.json)"
+          EXPECTED_PROVENANCE_SHA256="$(jq -r '.assessment_scope.appimage_provenance_sha256' data/engineering-candidate.json)"
+          EXPECTED_CARGO_LOCK_SHA256="$(jq -r '.assessment_scope.cargo_lock_sha256' data/engineering-candidate.json)"
+          [[ "$(sha256sum "${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage" | cut -d ' ' -f 1)" == "${EXPECTED_ARTIFACT_SHA256}" ]]
+          [[ "$(stat --format=%s "${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage")" == "${EXPECTED_ARTIFACT_BYTES}" ]]
+          [[ "$(sha256sum "${candidate_root}/evidence/appdir-a.json" | cut -d ' ' -f 1)" == "${EXPECTED_APPDIR_SHA256}" ]]
+          [[ "$(sha256sum "${candidate_root}/appimage/provenance.json" | cut -d ' ' -f 1)" == "${EXPECTED_PROVENANCE_SHA256}" ]]
+          [[ "$(sha256sum Cargo.lock | cut -d ' ' -f 1)" == "${EXPECTED_CARGO_LOCK_SHA256}" ]]
+          jq -e \
+            --slurpfile candidate data/engineering-candidate.json \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .kind == "release_readiness_assessment" and
+              .assessment_scope == $candidate[0].assessment_scope and
+              .engineering_candidate == true and
+              .stable_publication_permitted == false and
+              .release_status == "not_release_approved_do_not_publish"
+            ' "${candidate_root}/evidence/release-readiness.json" >/dev/null
+          [[ ! -e "${release_root}" ]]
+          {
+            printf 'PACKAGER_BIN=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-packager"
+            printf 'CANDIDATE_ROOT=%s\n' "${candidate_root}"
+            printf 'RELEASE_ROOT=%s\n' "${release_root}"
+            printf 'SOURCE_TREE=%s\n' "${source_tree}"
+            printf 'CREATED_AT=%s\n' "${created_at}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Build the exact locked release tooling offline
+        run: cargo build --release --locked
+
+      - name: Sign and verify the retained release evidence
+        env:
+          UPDATE_SIGNING_SEED_BASE64: ${{ secrets.UPDATE_SIGNING_SEED_BASE64 }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir --mode=0700 -- "${RELEASE_ROOT}"
+          mkdir --mode=0700 -- "${RELEASE_ROOT}/assets"
+          key_directory="$(
+            mktemp --directory --tmpdir="${RUNNER_TEMP}" codex-release-key.XXXXXXXXXX
+          )"
+          key_path="${key_directory}/release.seed"
+          cleanup_key() {
+            if [[ -f "${key_path}" && ! -L "${key_path}" ]]; then
+              chmod 0600 -- "${key_path}"
+              unlink -- "${key_path}"
+            fi
+            if [[ -d "${key_directory}" && ! -L "${key_directory}" ]]; then
+              rmdir -- "${key_directory}"
+            fi
+          }
+          trap cleanup_key EXIT HUP INT TERM
+          printf '%s' "${UPDATE_SIGNING_SEED_BASE64}" | base64 --decode >"${key_path}"
+          unset UPDATE_SIGNING_SEED_BASE64
+          [[ "$(stat --format=%s "${key_path}")" == "32" ]]
+          chmod 0600 -- "${key_path}"
+          "${PACKAGER_CARGO_DENY}" list --format json --layout crate \
+            >"${RELEASE_ROOT}/cargo-deny-licenses.json"
+          "${PACKAGER_BIN}" sign-update \
+            --appimage "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            --provenance "${CANDIDATE_ROOT}/appimage/provenance.json" \
+            --private-key "${key_path}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --published-at "${CREATED_AT}" \
+            --output "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
+            >"${RELEASE_ROOT}/signing-receipt.json"
+          "${PACKAGER_BIN}" prepare-release \
+            --appimage "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            --provenance "${CANDIDATE_ROOT}/appimage/provenance.json" \
+            --update-manifest "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
+            --release-readiness "${CANDIDATE_ROOT}/evidence/release-readiness.json" \
+            --appdir-manifest "${CANDIDATE_ROOT}/evidence/appdir-a.json" \
+            --cargo-lock "${GITHUB_WORKSPACE}/Cargo.lock" \
+            --cargo-license-report "${RELEASE_ROOT}/cargo-deny-licenses.json" \
+            --private-key "${key_path}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-tree "${SOURCE_TREE}" \
+            --created-at "${CREATED_AT}" \
+            --output "${RELEASE_ROOT}/evidence" \
+            >"${RELEASE_ROOT}/preparation-receipt.json"
+          install --mode=0644 -- \
+            "${CANDIDATE_ROOT}/evidence/appdir-a.json" \
+            "${RELEASE_ROOT}/assets/appdir-manifest.json"
+          install --mode=0644 -- \
+            "${CANDIDATE_ROOT}/evidence/release-readiness.json" \
+            "${RELEASE_ROOT}/assets/release-readiness.json"
+          install --mode=0644 -- \
+            "${GITHUB_WORKSPACE}/Cargo.lock" \
+            "${RELEASE_ROOT}/assets/Cargo.lock"
+          "${PACKAGER_BIN}" verify-release \
+            --evidence "${RELEASE_ROOT}/evidence" \
+            --appimage "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            --provenance "${CANDIDATE_ROOT}/appimage/provenance.json" \
+            --update-manifest "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
+            --release-readiness "${RELEASE_ROOT}/assets/release-readiness.json" \
+            --appdir-manifest "${RELEASE_ROOT}/assets/appdir-manifest.json" \
+            --cargo-lock "${RELEASE_ROOT}/assets/Cargo.lock" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-tree "${SOURCE_TREE}" \
+            >"${RELEASE_ROOT}/verification-receipt.json"
+
+      - name: Record the retained signed generation
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          {
+            printf '### Protected release signing\n\n'
+            printf -- '- Application: `%s` build `%s`\n' \
+              "${REQUESTED_VERSION}" "${REQUESTED_BUILD}"
+            printf -- '- Source commit: `%s`\n' "${SOURCE_COMMIT}"
+            printf -- '- Retained release root: `%s`\n' "${RELEASE_ROOT}"
+            printf -- '- Signing key persisted by workflow: `no`\n'
+            printf -- '- Public release created: `no`\n'
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  draft:
+    name: Create and redownload a non-public draft
+    needs: sign
+    runs-on: [self-hosted, linux, x64, codex-packager-trusted]
+    environment: release-draft
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the signed handoff
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CANDIDATE_GENERATION: ${{ inputs.candidate_generation }}
+        run: |
+          set -euo pipefail
+          [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${CANDIDATE_GENERATION}" == "candidate-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-"* ]]
+          git cat-file -e "${SOURCE_COMMIT}^{commit}"
+          git switch --detach "${SOURCE_COMMIT}"
+          source_tree="$(git rev-parse "${SOURCE_COMMIT}^{tree}")"
+          candidate_root="${PACKAGER_OUTPUT_ROOT}/${CANDIDATE_GENERATION}"
+          release_root="${candidate_root}/release-draft-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ -d "${candidate_root}" && ! -L "${candidate_root}" ]]
+          [[ -d "${release_root}" && ! -L "${release_root}" ]]
+          {
+            printf 'PACKAGER_BIN=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-packager"
+            printf 'CANDIDATE_ROOT=%s\n' "${candidate_root}"
+            printf 'RELEASE_ROOT=%s\n' "${release_root}"
+            printf 'SOURCE_TREE=%s\n' "${source_tree}"
+            printf 'RELEASE_TAG=codex-app-%s-%s\n' "${REQUESTED_VERSION}" "${REQUESTED_BUILD}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Build the exact locked verifier offline
+        run: cargo build --release --locked
+
+      - name: Keylessly verify the local handoff
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          "${PACKAGER_BIN}" verify-release \
+            --evidence "${RELEASE_ROOT}/evidence" \
+            --appimage "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            --provenance "${CANDIDATE_ROOT}/appimage/provenance.json" \
+            --update-manifest "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
+            --release-readiness "${RELEASE_ROOT}/assets/release-readiness.json" \
+            --appdir-manifest "${RELEASE_ROOT}/assets/appdir-manifest.json" \
+            --cargo-lock "${RELEASE_ROOT}/assets/Cargo.lock" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-tree "${SOURCE_TREE}" \
+            >"${RELEASE_ROOT}/draft-preflight-receipt.json"
+
+      - name: Create the protected draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "release tag already exists; refusing replacement" >&2
+            exit 1
+          fi
+          notes="${RUNNER_TEMP}/draft-release-notes-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.md"
+          {
+            printf '# Non-public engineering draft\n\n'
+            printf 'Codex application `%s` build `%s`.\n\n' \
+              "${REQUESTED_VERSION}" "${REQUESTED_BUILD}"
+            printf 'This draft is unofficial and unaffiliated. '
+            printf 'It is not approved for public distribution. '
+            printf 'Independent notice review, the complete desktop/FUSE matrix, '
+            printf 'rollback exercise, and frozen independent review remain required.\n\n'
+            printf 'Source commit: `%s`\n' "${SOURCE_COMMIT}"
+          } >"${notes}"
+          gh release create "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --target "${SOURCE_COMMIT}" \
+            --title "Codex Desktop Linux engineering draft ${REQUESTED_VERSION}-${REQUESTED_BUILD}" \
+            --notes-file "${notes}" \
+            "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
+            "${CANDIDATE_ROOT}/appimage/provenance.json" \
+            "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
+            "${RELEASE_ROOT}/assets/appdir-manifest.json" \
+            "${RELEASE_ROOT}/assets/release-readiness.json" \
+            "${RELEASE_ROOT}/assets/Cargo.lock" \
+            "${RELEASE_ROOT}/evidence/SHA256SUMS" \
+            "${RELEASE_ROOT}/evidence/codex-linux-x86_64.spdx.json" \
+            "${RELEASE_ROOT}/evidence/release-attestation.json" \
+            "${RELEASE_ROOT}/evidence/third-party-notices.json"
+
+      - name: Redownload and keylessly verify every draft asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          download="${RUNNER_TEMP}/draft-download-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          evidence="${download}/evidence"
+          mkdir --mode=0700 -- "${download}"
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dir "${download}"
+          release_inventory="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft,assets \
+              --jq '
+                (.isDraft == true) and
+                ((.assets | map(.name) | sort) == [
+                  "Cargo.lock",
+                  "SHA256SUMS",
+                  "appdir-manifest.json",
+                  "codex-desktop-unofficial-x86_64.AppImage",
+                  "codex-linux-x86_64-update.json",
+                  "codex-linux-x86_64.spdx.json",
+                  "provenance.json",
+                  "release-attestation.json",
+                  "release-readiness.json",
+                  "third-party-notices.json"
+                ])
+              '
+          )"
+          [[ "${release_inventory}" == "true" ]]
+          mapfile -t downloaded_assets < <(
+            find "${download}" -mindepth 1 -maxdepth 1 -printf '%f\n' |
+              LC_ALL=C sort
+          )
+          expected_assets=(
+            Cargo.lock
+            SHA256SUMS
+            appdir-manifest.json
+            codex-desktop-unofficial-x86_64.AppImage
+            codex-linux-x86_64-update.json
+            codex-linux-x86_64.spdx.json
+            provenance.json
+            release-attestation.json
+            release-readiness.json
+            third-party-notices.json
+          )
+          [[ "${#downloaded_assets[@]}" == "${#expected_assets[@]}" ]]
+          for index in "${!expected_assets[@]}"; do
+            [[ "${downloaded_assets[index]}" == "${expected_assets[index]}" ]]
+            [[ -f "${download}/${downloaded_assets[index]}" ]]
+            [[ ! -L "${download}/${downloaded_assets[index]}" ]]
+          done
+          mkdir --mode=0755 -- "${evidence}"
+          for name in \
+            SHA256SUMS \
+            codex-linux-x86_64.spdx.json \
+            release-attestation.json \
+            third-party-notices.json
+          do
+            install --mode=0644 -- "${download}/${name}" "${evidence}/${name}"
+          done
+          "${PACKAGER_BIN}" verify-release \
+            --evidence "${evidence}" \
+            --appimage "${download}/codex-desktop-unofficial-x86_64.AppImage" \
+            --provenance "${download}/provenance.json" \
+            --update-manifest "${download}/codex-linux-x86_64-update.json" \
+            --release-readiness "${download}/release-readiness.json" \
+            --appdir-manifest "${download}/appdir-manifest.json" \
+            --cargo-lock "${download}/Cargo.lock" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-tree "${SOURCE_TREE}" \
+            >"${RELEASE_ROOT}/draft-redownload-verification.json"
+          {
+            printf '### Draft release verification\n\n'
+            printf -- '- Draft tag: `%s`\n' "${RELEASE_TAG}"
+            printf -- '- Redownloaded asset verification: `passed`\n'
+            printf -- '- Public visibility: `draft only`\n'
+            printf -- '- Stable publication: `not performed`\n'
+          } >>"${GITHUB_STEP_SUMMARY}"
