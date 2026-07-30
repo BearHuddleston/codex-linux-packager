@@ -5,7 +5,7 @@ use codex_linux_packager::release::{
 };
 
 #[test]
-fn release_gate_catalog_never_implies_external_approval() {
+fn release_gate_catalog_excludes_publisher_legal_decisions() {
     let gates = release_gate_catalog();
     let identifiers = gates
         .iter()
@@ -22,8 +22,6 @@ fn release_gate_catalog_never_implies_external_approval() {
             "complete_final_elf_audit",
             "host_wayland_x11_extract_and_run",
             "controlled_older_glibc_launch",
-            "payload_redistribution_authority",
-            "trademark_and_branding_authority",
             "complete_notices_and_deterministic_sbom",
             "signed_checksums_and_protected_keys",
             "signed_attestation_exact_commit_and_artifacts",
@@ -34,9 +32,17 @@ fn release_gate_catalog_never_implies_external_approval() {
         ]
     );
 
-    for id in [
+    for publisher_decision in [
         "payload_redistribution_authority",
         "trademark_and_branding_authority",
+    ] {
+        assert!(
+            !identifiers.contains(&publisher_decision),
+            "publisher legal decisions must not be machine release gates"
+        );
+    }
+
+    for id in [
         "complete_notices_and_deterministic_sbom",
         "signed_checksums_and_protected_keys",
         "signed_attestation_exact_commit_and_artifacts",

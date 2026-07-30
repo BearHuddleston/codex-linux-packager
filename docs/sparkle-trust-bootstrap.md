@@ -114,5 +114,6 @@ Acquired files belong under ignored `work/`; never add them to Git.
 8. Decode `SUPublicEDKey`, require 32 canonical bytes, and compute its SHA-256.
 9. Verify the feed signature on the complete archive with that key.
 
-This bootstrap authenticates one public trust root. It does not grant payload
-redistribution or trademark rights and does not clear any release gate.
+This bootstrap authenticates one public trust root. It does not determine the
+publisher's payload redistribution or trademark authority and does not clear
+any cataloged release gate.
