@@ -20,7 +20,8 @@ For one exact evidence set, the command can establish:
 - native, runtime, AppDir, AppImage, and lockfile inputs are digest-bound;
 - two offline, independent-root AppImage builds are byte-identical;
 - real SQLite and PTY round trips passed under the exact Electron ABI;
-- the extracted final AppImage matches its manifest and every ELF was audited;
+- the extracted final AppImage matches its manifest, every ELF was audited,
+  and no recorded GLIBC requirement exceeds 2.36;
 - genuine host extract-and-run launches passed on both Wayland and X11; and
 - a genuine non-root launch passed in the digest-pinned controlled
   Debian/glibc-2.36 baseline with networking disabled.

@@ -1,118 +1,201 @@
 # codex-linux-packager
 
-`codex-linux-packager` is an auditable, unofficial Linux x86_64 packaging CLI
-for authenticated Codex desktop artifacts. It is a clean-room Rust
-implementation and supports no other target architecture.
+<p align="center">
+  <strong>An auditable, deterministic Linux x86_64 packaging pipeline for authenticated Codex desktop artifacts.</strong>
+</p>
 
-The implemented pipeline can:
+<p align="center">
+  Clean-room Rust tooling · schema-1 provenance · exact-input contracts · no bundled application payloads
+</p>
 
-1. inspect the fixed official x86_64 Sparkle feed;
-2. authenticate a complete downloaded artifact with an independently pinned
-   Ed25519 trust root;
-3. preflight ZIP and ASAR structure and stage only `source.zip`, `app.asar`,
-   and schema-1 provenance;
-4. rebuild the exact locked native graph in a digest-addressed Debian
-   Bookworm/glibc-2.36 build image for Electron 42.3.0 / module ABI 146;
-5. run real SQLite and PTY probes under that Electron runtime;
-6. assemble the pinned Linux x86_64 Electron, Codex CLI, and ripgrep runtime
-   while omitting and inventorying foreign binaries;
-7. build deterministic AppDirs and twice-built byte-identical Type-2
-   AppImages with networking disabled;
-8. extract and revalidate the final filesystem, audit every included ELF, and
-   perform genuine Wayland, X11, and controlled older-glibc launches; and
-9. emit a digest-bound release-readiness assessment that leaves every
-   independent uncleared gate blocking.
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#pipeline">Pipeline</a> ·
+  <a href="#security-contract">Security</a> ·
+  <a href="#release-boundary">Release boundary</a> ·
+  <a href="#development">Development</a>
+</p>
 
-## Release status
+<p align="center">
+  <img
+    src="docs/images/readme-terminal.svg"
+    alt="codex-linux-packager command-line help showing the nine packaging and assessment commands"
+    width="100%"
+  >
+</p>
 
-Pre-release engineering implementation. No public or stable binary is approved.
+> [!IMPORTANT]
+> This project is pre-release, unofficial, and unaffiliated with OpenAI. No
+> public or stable AppImage is approved. The MIT license covers this
+> repository's original tooling only; it does not grant payload redistribution
+> or trademark rights.
 
-This project is unofficial and unaffiliated with OpenAI. The MIT license covers
-only this repository's original tooling. It does not grant rights to
-redistribute OpenAI payloads or use OpenAI trademarks or branding. The current
-release-readiness report is deliberately non-approving because those legal
-questions, complete payload notices/SBOM, signing, protected automation, the
-full desktop/FUSE matrix, rollback, and frozen independent review have not been
-cleared.
+## At a glance
 
-Generated outputs prove the bytes produced at their documented commit boundary
-under [`docs/threat-model.md`](docs/threat-model.md). They do not become
-immutable against a hostile process running as the same owning UID after a
-command returns.
+| Contract | Current value |
+| --- | --- |
+| Supported target | Linux x86_64 only |
+| Toolchain | Stable Rust; MSRV 1.85.0 |
+| Electron | 42.3.0 / module ABI 146 |
+| Native build baseline | Debian Bookworm / GLIBC 2.36 |
+| Version-matched inputs | Codex CLI 0.146.0-alpha.3.1 / ripgrep 15.2.0 |
+| Persisted documents | Schema `1`, deterministic compact JSON |
+| Producer | `io.github.bearhuddleston.codex-linux-packager.rust` |
+| Release status | Engineering pipeline implemented; publication blocked |
 
-## Commands
+The tool authenticates one official desktop artifact, narrows it to the
+permitted source set, rebuilds native dependencies for the exact Electron ABI,
+assembles a Linux runtime, and verifies a deterministic AppImage. Every phase
+emits evidence for the next phase to validate independently.
 
-The public command surface is:
+## Quick start
 
-- `inspect`
-- `inspect-artifact`
-- `stage`
-- `extract`
-- `build-native`
-- `assemble-runtime`
-- `build-appdir`
-- `pack-appimage`
-- `release-readiness`
+Build the CLI from the locked dependency graph:
 
-Run `codex-linux-packager <command> --help` for the exact typed inputs. Paths
-used by build and assessment commands are absolute. Acquired inputs and outputs
-belong only beneath ignored `work/`, `cache/`, `build/`, `out/`, or `dist/`
+```bash
+git clone https://github.com/BearHuddleston/codex-linux-packager.git
+cd codex-linux-packager
+cargo build --locked
+./target/debug/codex-linux-packager --help
+```
+
+Inspect the fixed official Sparkle feed:
+
+```bash
+cargo run --locked -- inspect
+```
+
+Or exercise the same bounded parser offline with a synthetic local fixture:
+
+```bash
+cargo run --locked -- inspect --fixture /absolute/path/to/feed.xml
+```
+
+`inspect` emits the exact `signature`, `length`, `version`, and `build` required
+by the artifact-authentication commands. The production signing trust root is
+compiled independently and is not caller-selectable.
+
+## Pipeline
+
+```text
+Sparkle feed
+    │
+    ▼
+inspect ──► inspect-artifact ──► stage ──► extract
+                                      │
+                                      ▼
+                               build-native
+                                      │
+                                      ▼
+                              assemble-runtime
+                                      │
+                                      ▼
+                                build-appdir
+                                      │
+                                      ▼
+                               pack-appimage
+                                      │
+                                      ▼
+                             release-readiness
+```
+
+| Command | Responsibility | Result |
+| --- | --- | --- |
+| `inspect` | Parse the fixed feed or a bounded local fixture | Typed release metadata |
+| `inspect-artifact` | Authenticate and preflight the complete desktop ZIP | Reconciled artifact report |
+| `stage` | Publish only the authenticated ZIP, `app.asar`, and provenance | Private schema-1 stage generation |
+| `extract` | Expand integrity-verified packed ASAR files | New no-replace extraction generation |
+| `build-native` | Rebuild the locked `better-sqlite3` and `node-pty` graph | Verified Linux x86_64 native outputs |
+| `assemble-runtime` | Combine pinned Electron, Codex CLI, ripgrep, and native inputs | Normalized runtime plus complete manifest |
+| `build-appdir` | Construct the deterministic filesystem and launcher | Timestamp- and mode-normalized AppDir |
+| `pack-appimage` | Build twice, compare, extract, audit, and launch | Byte-reproducible AppImage plus provenance |
+| `release-readiness` | Re-authenticate the full evidence chain and evaluate gates | Truthful blocking release assessment |
+
+Run `codex-linux-packager <command> --help` for every typed argument. Build and
+assessment commands require absolute paths. Acquired inputs and generated
+outputs belong beneath ignored `work/`, `cache/`, `build/`, `out/`, or `dist/`
 directories.
 
-Inspect the fixed live feed:
+### What the completed pipeline verifies
 
-```bash
-cargo run -- inspect
-```
+- Ed25519 authentication covers the exact complete downloaded artifact bytes.
+- ZIP and ASAR inputs are bounded and preflighted before narrow extraction.
+- Native modules are rebuilt for Electron ABI 146 and must pass real SQLite
+  and PTY round trips under the exact runtime.
+- Runtime assembly includes only the Linux x86_64 policy set and inventories
+  every inclusion and omission.
+- AppImages are built from independent roots with network-isolated packaging
+  and must be byte-identical.
+- The final AppImage is extracted, matched to AppDir provenance, and exercised
+  on host Wayland, host X11, and a controlled older-GLIBC baseline.
+- Every extracted ELF requirement is recorded; `release-readiness` rejects a
+  recorded GLIBC requirement above 2.36.
 
-Inspect a bounded synthetic local fixture without network access:
+`build-native` is offline by default and uses the digest-addressed OCI image in
+[`data/native-contract.json`](data/native-contract.json). Its explicit
+`--allow-network` flag is recorded in provenance. `pack-appimage` requires two
+independently constructed AppDirs, digest-matched packaging tools, both Wayland
+and X11 backends, and the exact locally verified older-GLIBC image ID.
 
-```bash
-cargo run -- inspect --fixture /absolute/path/to/feed.xml
-```
+## Security contract
 
-Artifact commands require the exact `signature`, `length`, `version`, and
-`build` returned by `inspect`. The production trust root is compiled
-independently and is not caller-selectable.
+The binding scope is [`docs/threat-model.md`](docs/threat-model.md).
 
-`build-native` defaults to offline npm operation and uses the exact OCI image
-in `data/native-contract.json`; network access requires the explicit
-`--allow-network` flag and is recorded truthfully. `pack-appimage` requires two
-independently constructed AppDirs, exact tool digests, both Wayland and X11
-backends, and the exact locally verified older-glibc image ID.
+The implementation is designed to reject malformed, oversized, ambiguous,
+truncated, unauthenticated, path-unsafe, or resource-exhausting inputs. It uses
+bounded reads and subprocess output, no-follow file opens, deterministic
+environments, process-group cleanup, and no-replace publication.
 
-`release-readiness` re-authenticates the complete stage and validates the
-manifest chain, AppImage bytes, and Cargo lockfile. A successful command means
-the assessment ran successfully; consult `stable_publication_permitted` and
-`blocking_gate_ids`. With the presently external gates, the expected value is
-`false`.
+Publication guarantees the bytes produced at the documented durable commit
+boundary. It does **not** make ordinary user-owned files permanently immutable
+against a hostile process running as the same UID. Stronger same-UID guarantees
+would require a separately privileged publisher or kernel-enforced immutable
+storage—not another userspace verifier.
 
 ## JSON and provenance
 
-Machine-readable documents begin at schema `1` and use producer
-`io.github.bearhuddleston.codex-linux-packager.rust`. Unknown schemas, older
-schemas, unknown fields, and other producers are rejected. There is no implicit
-compatibility with Python schema-3 staging state.
+Machine-readable documents:
 
-JSON is emitted as one compact UTF-8 document followed by a newline. Manifests
-inventory exact paths, byte counts, modes, and SHA-256 identities. A later phase
-independently validates the evidence it consumes.
+- begin at schema `1`;
+- require producer
+  `io.github.bearhuddleston.codex-linux-packager.rust`;
+- deny unknown fields, unknown or old schemas, and other producers;
+- use one compact UTF-8 JSON document followed by a newline; and
+- inventory paths, byte counts, modes, and SHA-256 identities.
+
+There is no implicit compatibility with Python schema-3 staging state. Each
+consumer revalidates both the identity and semantics of the evidence it reads.
+
+## Release boundary
+
+`release-readiness` validates the stage, native, runtime, AppDir, AppImage,
+artifact, and Cargo lockfile chain. A successful invocation means only that the
+assessment completed. Read `stable_publication_permitted` and
+`blocking_gate_ids`; with the current external gates, the expected publication
+value is `false`.
+
+Stable publication remains blocked on independently cleared legal authority,
+complete notices and SBOM, protected signing and automation, a complete desktop
+and FUSE matrix, rollback/recovery rehearsal, and frozen review of one exact
+commit and artifact digest set. See
+[`docs/release-gates.md`](docs/release-gates.md).
 
 ## Repository boundary
 
-Never commit OpenAI or Codex application payloads, extracted bundles, branding
-assets, native modules, executables, credentials, private keys, or build
-outputs. Tests generate only small synthetic fixtures. Live-network and
-proprietary-input tests are separately labeled and opt in.
+Git must never contain OpenAI or Codex application payloads, extracted bundles,
+branding assets, native modules, executables, credentials, private keys, or
+build products. Tests use small synthetic fixtures; live-network and
+proprietary-input tests are explicitly opt in.
 
-`tests/repository_boundary.rs` checks the candidate Git tree for prohibited
-archives, binaries, symlinks, oversized files, obvious credential paths, and
-private-key material.
+[`tests/repository_boundary.rs`](tests/repository_boundary.rs) checks the
+candidate Git tree for prohibited archives, binary content, symlinks, oversized
+files, obvious credential paths, and private-key material. The terminal image
+above is an original UTF-8 SVG containing only the CLI's public help text.
 
 ## Development
 
-Rust 1.85.0 is the minimum supported version. Stable Rust is used otherwise.
-Run the canonical gates from the repository root:
+Work vertically with RED → GREEN → REFACTOR. Run the canonical gates directly
+from the repository root:
 
 ```bash
 cargo test --all-targets --all-features
@@ -122,6 +205,19 @@ cargo audit
 cargo deny check
 ```
 
-See [`AGENTS.md`](AGENTS.md) for RED → GREEN → REFACTOR,
-[`docs/architecture.md`](docs/architecture.md) for the implemented data flow,
-and [`docs/release-gates.md`](docs/release-gates.md) for the release boundary.
+Useful project documents:
+
+| Document | Purpose |
+| --- | --- |
+| [`AGENTS.md`](AGENTS.md) | Repository workflow and canonical commands |
+| [`docs/architecture.md`](docs/architecture.md) | Implemented data flow and trust boundaries |
+| [`docs/threat-model.md`](docs/threat-model.md) | Binding security scope |
+| [`docs/release-gates.md`](docs/release-gates.md) | Engineering evidence versus publication approval |
+| [`docs/dependencies.md`](docs/dependencies.md) | Exact dependency-selection rationale |
+| [`docs/decisions/`](docs/decisions/) | Accepted architecture decision records |
+
+## License
+
+The original packaging and validation tooling in this repository is available
+under the [MIT License](LICENSE). No OpenAI application payload, trademark, or
+branding right is included or implied.

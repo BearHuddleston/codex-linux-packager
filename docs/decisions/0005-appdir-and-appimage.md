@@ -34,7 +34,9 @@ Extract the final filesystem and revalidate all regular-file bytes and modes
 against AppDir provenance. Directory timestamps are not compared after
 unsquashfs because extraction recreates directories; every source AppDir
 timestamp remains strict. Audit every extracted ELF with digest-pinned
-`readelf` and reject requirements above GLIBC 2.36.
+`readelf` and record its complete requirements in AppImage provenance. The
+separate `release-readiness` assessment rejects any recorded GLIBC requirement
+above 2.36.
 
 Require genuine extract-and-run launches on both host Wayland and X11. Each
 must reach packaged-mode, exact app-server handshake, and ready-to-show markers

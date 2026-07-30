@@ -1,0 +1,87 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1320"
+  height="650"
+  viewBox="0 0 1320 650"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">codex-linux-packager command-line help</title>
+  <desc id="description">
+    Terminal capture generated from the real codex-linux-packager help output,
+    listing its nine packaging and assessment commands.
+  </desc>
+
+  <defs>
+    <linearGradient id="backdrop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-15%" width="120%" height="135%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect width="1320" height="650" rx="28" fill="url(#backdrop)"/>
+  <rect
+    x="28"
+    y="28"
+    width="1264"
+    height="594"
+    rx="16"
+    fill="#161b22"
+    stroke="#30363d"
+    filter="url(#shadow)"
+  />
+  <path d="M28 76h1264" stroke="#30363d"/>
+
+  <circle cx="58" cy="52" r="7" fill="#ff7b72"/>
+  <circle cx="82" cy="52" r="7" fill="#d29922"/>
+  <circle cx="106" cy="52" r="7" fill="#3fb950"/>
+  <text
+    x="660"
+    y="58"
+    text-anchor="middle"
+    fill="#8b949e"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
+    font-size="15"
+  >codex-linux-packager — help</text>
+
+  <g
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
+    font-size="17"
+    xml:space="preserve"
+  >
+    <text x="54" y="108">
+      <tspan fill="#7ee787">$</tspan>
+      <tspan fill="#f0f6fc"> codex-linux-packager --help</tspan>
+    </text>
+
+    <text x="54" y="148" fill="#c9d1d9">Auditable Linux x86_64 packaging CLI for authenticated Codex desktop artifacts</text>
+    <text x="54" y="186" fill="#c9d1d9">Usage: <tspan fill="#79c0ff">codex-linux-packager</tspan> &lt;COMMAND&gt;</text>
+
+    <text x="54" y="224" fill="#f0f6fc" font-weight="700">Commands:</text>
+    <text x="54" y="251" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect</tspan>            Inspect release metadata from the Codex Sparkle feed</text>
+    <text x="54" y="278" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-artifact</tspan>   Authenticate and inspect a downloaded desktop artifact</text>
+    <text x="54" y="305" fill="#c9d1d9">  <tspan fill="#79c0ff">stage</tspan>              Authenticate and stage the narrow permitted source set</text>
+    <text x="54" y="332" fill="#c9d1d9">  <tspan fill="#79c0ff">extract</tspan>            Extract authenticated staged inputs for a later phase</text>
+    <text x="54" y="359" fill="#c9d1d9">  <tspan fill="#79c0ff">build-native</tspan>       Rebuild required native modules for the target Electron ABI</text>
+    <text x="54" y="386" fill="#c9d1d9">  <tspan fill="#79c0ff">assemble-runtime</tspan>   Assemble the pinned Linux x86_64 Electron runtime</text>
+    <text x="54" y="413" fill="#c9d1d9">  <tspan fill="#79c0ff">build-appdir</tspan>       Construct a deterministic AppDir</text>
+    <text x="54" y="440" fill="#c9d1d9">  <tspan fill="#79c0ff">pack-appimage</tspan>      Construct and verify a deterministic AppImage</text>
+    <text x="54" y="467" fill="#c9d1d9">  <tspan fill="#79c0ff">release-readiness</tspan>  Assess one exact candidate against every independent release gate</text>
+
+    <text x="54" y="512" fill="#f0f6fc" font-weight="700">Options:</text>
+    <text x="54" y="539" fill="#c9d1d9">  <tspan fill="#d2a8ff">-h, --help</tspan>     Print help</text>
+    <text x="54" y="566" fill="#c9d1d9">  <tspan fill="#d2a8ff">-V, --version</tspan>  Print version</text>
+  </g>
+
+  <text
+    x="1264"
+    y="604"
+    text-anchor="end"
+    fill="#6e7681"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
+    font-size="13"
+  >Linux x86_64 · schema 1 · pre-release</text>
+</svg>
