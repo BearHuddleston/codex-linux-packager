@@ -278,6 +278,10 @@ pub struct AppImageManifest {
     pub kind: String,
     /// Truthful publication guarantee scope.
     pub publication_scope: String,
+    /// Codex desktop application version carried by this AppImage.
+    pub application_version: String,
+    /// Codex desktop application build carried by this AppImage.
+    pub application_build: String,
     /// Final AppImage identity.
     pub artifact: AppImageArtifact,
     /// Exact equal digest produced by the independent second build.
@@ -543,6 +547,8 @@ pub fn pack_appimage(request: &AppImageRequest) -> Result<AppImageManifest, AppI
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: "linux_x86_64_appimage".to_owned(),
         publication_scope: PUBLICATION_SCOPE.to_owned(),
+        application_version: first_appdir.application_version.clone(),
+        application_build: first_appdir.application_build.clone(),
         artifact: AppImageArtifact {
             path: contract.artifact_filename.clone(),
             sha256: artifact_sha256,
@@ -890,6 +896,10 @@ fn launch_appimage(
         OsString::from("CODEX_LINUX_DISPLAY_BACKEND"),
         OsString::from(label),
     );
+    environment.insert(
+        OsString::from("CODEX_LINUX_DISABLE_UPDATES"),
+        OsString::from("1"),
+    );
     environment.insert(OsString::from("XDG_SESSION_TYPE"), OsString::from(label));
     for name in [
         "DISPLAY",
@@ -1066,6 +1076,8 @@ fn launch_in_older_glibc_baseline(
         OsString::from("APPIMAGE_EXTRACT_AND_RUN=1"),
         OsString::from("--env"),
         OsString::from("CODEX_LINUX_DISPLAY_BACKEND=x11"),
+        OsString::from("--env"),
+        OsString::from("CODEX_LINUX_DISABLE_UPDATES=1"),
         OsString::from("--env"),
         OsString::from("HOME=/tmp/home"),
         OsString::from("--env"),

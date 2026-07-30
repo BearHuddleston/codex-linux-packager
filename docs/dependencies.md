@@ -25,17 +25,20 @@ proprietary payloads.
 
 ## Security-sensitive parsing and cryptography
 
-- `ureq` 3.3.0: small blocking HTTPS client with only the Rustls feature for
-  the fixed feed and exact artifact acquisition. Redirects and content decoding
-  are disabled by application policy; response identity, headers, lengths, and
-  bodies remain bounded. MIT/Apache-2.0.
+- `ureq` 3.3.0: small blocking HTTPS client with only the Rustls feature. Feed
+  and source-artifact redirects are disabled. The signed AppImage updater
+  permits a bounded GitHub release redirect chain only when the final HTTPS
+  origin is in its explicit allowlist. Content decoding is disabled and all
+  response headers, lengths, and bodies remain bounded. MIT/Apache-2.0.
 - `quick-xml` 0.41.0: event-driven bounded feed and XML property-list parsing.
   This release contains the fixes for RUSTSEC-2026-0194 and
   RUSTSEC-2026-0195. Dangerous or ambiguous constructs are rejected by
   application code. MIT.
-- `ed25519-dalek` 3.0.0: maintained pure-Rust strict RFC 8032 verification,
-  with default features disabled and no production private-key functionality.
-  MIT/Apache-2.0.
+- `ed25519-dalek` 3.0.0: maintained pure-Rust strict RFC 8032 verification for
+  official source artifacts and pinned AppImage update manifests. The release
+  command also signs canonical metadata from an explicitly supplied protected
+  raw seed; key generation uses operating-system randomness through `rustix`.
+  Default features remain disabled. MIT/Apache-2.0.
 - `sha2` 0.11.0: SHA-256 identities and integrity validation throughout the
   pipeline. MIT/Apache-2.0.
 - `zip` 6.0.0: member decompression only after the original raw ZIP framing,
@@ -52,7 +55,8 @@ proprietary payloads.
 
 - `rustix` 1.1.4 with `fs`, `process`, and `rand`: safe APIs for no-follow
   descriptor opens, descriptor-relative operations, `RENAME_NOREPLACE`,
-  durability, random private-generation names, process groups, and bounded
+  atomic `RENAME_EXCHANGE`, advisory update locking, durability, random
+  private-generation names and signing seeds, process groups, and bounded
   cleanup while retaining `#![forbid(unsafe_code)]`. MIT/Apache-2.0.
 - `tempfile` 3.27.0 is development-only and provides isolated synthetic test
   roots. MIT/Apache-2.0.

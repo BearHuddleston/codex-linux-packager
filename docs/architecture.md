@@ -75,7 +75,11 @@ the Linux x86_64 policy set, and inventories every inclusion and omission.
 
 `appdir` constructs a complete deterministic tree with normalized modes and
 timestamps, a generic original MIT-licensed icon, an explicit unofficial
-desktop identity, and an AppRun policy for auto/Wayland/X11. AppRun disables
+desktop identity, the independently digest-pinned Rust updater, its immutable
+schema-1 runtime config, and an AppRun policy for auto/Wayland/X11. AppRun
+starts a background update check only when launched as a Type-2 AppImage,
+supports a foreground `--codex-linux-update-now` check, and exposes an explicit
+disable variable. It disables
 the unusable setuid helper while preserving Chromium's user-namespace sandbox;
 it never passes `--no-sandbox`.
 
@@ -94,10 +98,41 @@ use bubblewrap network/PID isolation. It then:
 The baseline Dockerfile and snapshot sources are repository inputs; the exact
 local image ID and package inventory digest are runtime evidence.
 
+### Signed AppImage updates
+
+`update` owns a separate schema-1 Ed25519 release contract beginning at
+`data/update-contract.json`. Its key is distinct from the official Sparkle
+source-artifact key. Signed payloads bind the channel, Linux x86_64 target,
+immutable release tag, version/build, source commit, timestamp, AppImage name,
+exact URL, byte count, SHA-256, and provenance SHA-256. The signed envelope
+carries only the pinned fingerprint; unknown fields, other producers, old
+schemas, noncanonical JSON, wrong keys, replays that would downgrade, and
+self-supplied keys are rejected.
+
+`updater` runs as a small second Rust binary embedded in the AppDir. It follows
+only bounded HTTPS redirects ending on reviewed GitHub release origins,
+requires strict singular response headers and lengths, downloads the complete
+image to a private file in the current image's directory, and verifies the
+signed digest and Type-2 x86_64 identity. An adjacent advisory lock prevents
+cooperative concurrent checks.
+
+Activation uses safe `rustix` access to `renameat2(RENAME_EXCHANGE)`. The
+verified inode and current path swap atomically; the previous inode is then
+published without replacement as a versioned rollback file and the directory
+is synced. The running Electron process is never hot-swapped. The new image is
+used on the next launch.
+
+`generate-update-key` creates a no-replace raw seed at mode 0600 while emitting
+only public identity. `sign-update` requires that seed to match the compiled
+pin, reconciles the complete AppImage with canonical `pack-appimage`
+provenance, signs canonical immutable-tag metadata, self-verifies it, and
+publishes the manifest without replacement.
+
 ### Release readiness
 
 `release` re-authenticates the stage and validates the exact native → runtime →
-AppDir → AppImage provenance chain, final AppImage bytes, and Cargo lockfile.
+AppDir → AppImage provenance chain, including updater/config identity, final
+AppImage bytes, and Cargo lockfile.
 It clears only seven engineering gates that the supplied evidence establishes.
 All external legal, notices/SBOM, signing, automation, full platform-matrix,
 rollback, and independent-review gates remain blocking. The command cannot

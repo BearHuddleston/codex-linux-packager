@@ -19,6 +19,7 @@ use crate::native::{NativeManifest, native_contract};
 use crate::runtime::{RuntimeManifest, runtime_contract};
 use crate::signature::PINNED_SPARKLE_PUBLIC_KEY_SHA256;
 use crate::staging::{StageProvenance, validate_stage};
+use crate::update::embedded_update_contract;
 
 const PUBLICATION_SCOPE: &str = "bytes_at_durable_commit_boundary_under_documented_threat_model";
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
@@ -260,7 +261,7 @@ pub fn assess_release_readiness(
         &native,
         &native_manifest_sha256,
     )?;
-    validate_appdir_manifest(&appdir, &runtime_manifest_sha256)?;
+    validate_appdir_manifest(&appdir, &runtime, &runtime_manifest_sha256)?;
     validate_appimage_provenance(
         &provenance,
         &appdir,
@@ -572,6 +573,7 @@ fn validate_runtime_manifest(
 
 fn validate_appdir_manifest(
     manifest: &AppDirManifest,
+    runtime: &RuntimeManifest,
     runtime_manifest_sha256: &str,
 ) -> Result<(), ReleaseError> {
     if manifest.schema != SCHEMA_VERSION
@@ -579,6 +581,8 @@ fn validate_appdir_manifest(
         || manifest.kind != "linux_x86_64_appdir"
         || manifest.publication_scope != PUBLICATION_SCOPE
         || manifest.runtime_manifest_sha256 != runtime_manifest_sha256
+        || manifest.application_version != runtime.application_version
+        || manifest.application_build != runtime.application_build
         || manifest.packaged_executable != "usr/lib/codex-desktop/codex-desktop"
         || manifest.display_backend_policy
             != "auto_default_explicit_wayland_or_x11_via_CODEX_LINUX_DISPLAY_BACKEND"
@@ -587,6 +591,8 @@ fn validate_appdir_manifest(
         || manifest.identity_notice
             != "unofficial_and_unaffiliated_tooling_no_payload_redistribution_or_trademark_rights"
         || manifest.icon_license != "original_generic_non_branding_icon_MIT"
+        || manifest.update_policy
+            != "background_full_download_activate_for_next_launch_keep_versioned_rollback"
         || manifest.entries.is_empty()
         || manifest.entries.len() > 20_000
     {
@@ -604,6 +610,30 @@ fn validate_appdir_manifest(
     if embedded_runtime.sha256 != runtime_manifest_sha256 {
         return Err(ReleaseError::Evidence(
             "AppDir embedded runtime digest differs".to_owned(),
+        ));
+    }
+    for digest in [
+        &manifest.updater_sha256,
+        &manifest.update_config_sha256,
+        &manifest.update_public_key_sha256,
+    ] {
+        validate_digest(digest, "AppDir updater provenance")?;
+    }
+    let update_contract = embedded_update_contract()
+        .map_err(|error| ReleaseError::Evidence(format!("update contract: {error}")))?;
+    if manifest.update_manifest_url != update_contract.manifest_url
+        || manifest.update_public_key_sha256 != update_contract.public_key_sha256
+        || !manifest
+            .entries
+            .iter()
+            .any(|entry| entry.path == "usr/libexec/codex-linux-packager/codex-linux-updater")
+        || !manifest
+            .entries
+            .iter()
+            .any(|entry| entry.path == "usr/share/codex-linux-packager/update-config.json")
+    {
+        return Err(ReleaseError::Evidence(
+            "AppDir updater trust or inventory differs".to_owned(),
         ));
     }
     for entry in &manifest.entries {
@@ -628,6 +658,8 @@ fn validate_appimage_provenance(
         || manifest.producer != PRODUCER_IDENTIFIER
         || manifest.kind != "linux_x86_64_appimage"
         || manifest.publication_scope != PUBLICATION_SCOPE
+        || manifest.application_version != appdir.application_version
+        || manifest.application_build != appdir.application_build
         || manifest.artifact.path != contract.artifact_filename
         || artifact_filename != Some(contract.artifact_filename.as_str())
         || manifest.artifact.sha256 != artifact_sha256

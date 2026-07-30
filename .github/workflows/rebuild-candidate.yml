@@ -110,6 +110,7 @@ jobs:
           {
             printf 'PACKAGER_GENERATION=%s\n' "${generation}"
             printf 'PACKAGER_BIN=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-packager"
+            printf 'PACKAGER_UPDATER=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-updater"
           } >>"${GITHUB_ENV}"
 
       - name: Build the locked packager
@@ -239,11 +240,14 @@ jobs:
           set -euo pipefail
           runtime_manifest="${PACKAGER_GENERATION}/runtime/manifest.json"
           runtime_sha256="$(sha256sum "${runtime_manifest}" | cut -d ' ' -f 1)"
+          updater_sha256="$(sha256sum "${PACKAGER_UPDATER}" | cut -d ' ' -f 1)"
           source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
           for suffix in a b; do
             "${PACKAGER_BIN}" build-appdir \
               --runtime "${PACKAGER_GENERATION}/runtime" \
               --runtime-manifest-sha256 "${runtime_sha256}" \
+              --updater "${PACKAGER_UPDATER}" \
+              --updater-sha256 "${updater_sha256}" \
               --source-date-epoch "${source_date_epoch}" \
               --output "${PACKAGER_GENERATION}/appdir-${suffix}" \
               >"${PACKAGER_GENERATION}/evidence/appdir-${suffix}.json"

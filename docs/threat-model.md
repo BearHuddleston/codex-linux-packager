@@ -62,6 +62,13 @@ review.
   not broaden what is trusted or permitted to be staged.
 - External runtimes, CLIs, native packages, ripgrep, and packaging tools are
   independent inputs and require exact version and digest contracts.
+- The official Sparkle artifact key and this project's AppImage release key are
+  independent trust roots. The former authenticates source input; the latter
+  authenticates a final Linux release. Downloaded metadata cannot authorize a
+  replacement release key.
+- Runtime updates accept only canonical schema-1 manifests, immutable-tag asset
+  URLs in the reviewed GitHub repository, a strictly newer version/build, and a
+  complete AppImage matching the signed length and SHA-256.
 - Git, the build host, the signing environment, and release automation are
   operational trust boundaries, not consequences of passing unit tests.
 
@@ -80,6 +87,16 @@ output. Cleanup is limited to objects the current invocation created and proved
 it still owns under the in-scope model; it must not remove caller-owned or
 substituted paths.
 
+The runtime updater prepares a private replacement in the current AppImage's
+directory and commits with Linux `RENAME_EXCHANGE`, so the launch path always
+names either the complete old image or the complete verified new image. It then
+publishes the prior inode under a versioned no-replace rollback name and fsyncs
+the directory. An ordinary error after exchange is rolled back with another
+atomic exchange. A crash between exchange and rollback-name publication can
+leave the prior bytes at the updater's private name, but cannot leave the
+current launch path absent or partially written.
+
 After a public command returns, ordinary user-owned output remains mutable by
 that user. Provenance describes what the tool committed, not an eternal
-property of the path.
+property of the path. Rechecking, atomic exchange, a retained backup, and a
+signed manifest do not change that limitation.

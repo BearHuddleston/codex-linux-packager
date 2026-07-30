@@ -179,6 +179,12 @@ pub enum PackagingCommand {
         /// Independently recorded SHA-256 of the runtime manifest.
         #[arg(long, value_name = "HEX")]
         runtime_manifest_sha256: String,
+        /// Release-built Linux x86_64 updater executable.
+        #[arg(long, value_name = "PROGRAM")]
+        updater: PathBuf,
+        /// Independently recorded SHA-256 of the updater executable.
+        #[arg(long, value_name = "HEX")]
+        updater_sha256: String,
         /// Explicit normalized Unix timestamp for the complete AppDir.
         #[arg(long, value_name = "SECONDS")]
         source_date_epoch: i64,
@@ -240,6 +246,33 @@ pub enum PackagingCommand {
         #[arg(long, value_name = "DIRECTORY")]
         output: PathBuf,
     },
+    /// Generate a private Ed25519 update-signing seed and emit only its public identity.
+    GenerateUpdateKey {
+        /// New absolute mode-0600 raw private seed path, normally beneath ignored `work/`.
+        #[arg(long, value_name = "RAW_KEY")]
+        private_key: PathBuf,
+    },
+    /// Sign one verified AppImage and publish its pinned schema-1 update manifest.
+    SignUpdate {
+        /// Complete verified AppImage emitted by `pack-appimage`.
+        #[arg(long, value_name = "APPIMAGE")]
+        appimage: PathBuf,
+        /// Canonical provenance emitted beside the AppImage.
+        #[arg(long, value_name = "JSON")]
+        provenance: PathBuf,
+        /// Raw 32-byte mode-0600 release-signing seed.
+        #[arg(long, value_name = "RAW_KEY")]
+        private_key: PathBuf,
+        /// Exact 40-character source commit used for the release.
+        #[arg(long, value_name = "HEX")]
+        source_commit: String,
+        /// Explicit UTC timestamp such as `2026-07-30T18:00:00Z`.
+        #[arg(long, value_name = "RFC3339")]
+        published_at: String,
+        /// New signed update-manifest path.
+        #[arg(long, value_name = "JSON")]
+        output: PathBuf,
+    },
     /// Assess one exact candidate against every independent release gate.
     ReleaseReadiness {
         /// Authenticated stage generation to re-authenticate completely.
@@ -281,6 +314,8 @@ impl PackagingCommand {
             Self::AssembleRuntime { .. } => "assemble-runtime",
             Self::BuildAppdir { .. } => "build-appdir",
             Self::PackAppimage { .. } => "pack-appimage",
+            Self::GenerateUpdateKey { .. } => "generate-update-key",
+            Self::SignUpdate { .. } => "sign-update",
             Self::ReleaseReadiness { .. } => "release-readiness",
         }
     }
