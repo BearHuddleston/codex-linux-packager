@@ -140,12 +140,53 @@ If any phase fails, the partial private generation remains on the trusted
 runner for diagnosis and the candidate record is not changed. A later hourly
 monitor may retry only after no run or candidate pull request remains active.
 
+## Protected draft handoff
+
+After a candidate-record pull request is independently reviewed and merged,
+`.github/workflows/release-draft.yml` can be dispatched manually with its exact
+version, build, source commit, and retained generation basename. Before
+signing, it requires the retained AppImage digest/length, AppDir manifest,
+AppImage provenance, Cargo.lock, and complete release-readiness assessment
+scope to equal `data/engineering-candidate.json`.
+
+The workflow uses two protected jobs:
+
+1. `release-signing` has read-only repository permission and receives
+   `UPDATE_SIGNING_SEED_BASE64`. It verifies the exact pinned `cargo-deny`
+   executable, builds the selected source commit offline, signs the update
+   manifest, prepares deterministic SPDX/notices/checksums/attestation, and
+   keylessly verifies the local set.
+2. `release-draft` has repository write permission but no signing seed. It
+   keylessly verifies the retained handoff, creates only a non-public GitHub
+   draft, redownloads all ten assets, and keylessly verifies them again.
+
+No GitHub Actions artifact transfer is used. Both jobs must run on the one
+dedicated retained-output runner, or on separately isolated runners with the
+same private authenticated `PACKAGER_OUTPUT_ROOT`; an ordinary shared
+user-writable network directory is not a stronger trust boundary. The raw seed
+is decoded only inside a fresh mode-0700 `mktemp` directory as a mode-0600 file;
+the file and directory are removed by the signing step's cleanup trap.
+
+In addition to the rebuild variables, draft preparation requires:
+
+| Setting | Meaning |
+| --- | --- |
+| `PACKAGER_CARGO_DENY` | Absolute path to the reviewed `cargo-deny` executable |
+| `PACKAGER_CARGO_DENY_SHA256` | Exact SHA-256 of that executable |
+| `UPDATE_SIGNING_SEED_BASE64` | Protected `release-signing` environment secret containing exactly one base64-encoded 32-byte seed |
+
+The `release-signing` and `release-draft` environments must require appropriate
+reviewers before the secret is imported or the workflow is dispatched. The
+workflow source alone does not prove those controls exist.
+
 ## Publication boundary
 
-This automation rebuilds engineering candidates; it does not publish them.
+The scheduled automation rebuilds engineering candidates; it does not publish
+them. The separate manual workflow creates only a non-public draft.
 `stable_publication_permitted` remains false while any gate in
-`docs/release-gates.md` is blocking. Enabling the runner does not establish
-complete notices/SBOM, protected signing, signed attestation, complete
-desktop/FUSE coverage, rollback readiness, or independent approval. It also
-does not evaluate or establish the publisher's payload redistribution or
-trademark authority, which is outside the machine gate catalog.
+`docs/release-gates.md` is blocking. Enabling the runner or creating a draft
+does not establish independent notice/license review, protected-operation
+approval, complete desktop/FUSE coverage, rollback readiness, or frozen
+independent approval. It also does not evaluate or establish the publisher's
+payload redistribution or trademark authority, which is outside the machine
+gate catalog.

@@ -128,15 +128,47 @@ pin, reconciles the complete AppImage with canonical `pack-appimage`
 provenance, signs canonical immutable-tag metadata, self-verifies it, and
 publishes the manifest without replacement.
 
+### Signed release evidence
+
+`release_evidence` consumes the exact assessed AppImage, AppImage provenance,
+signed update manifest, AppDir manifest, release-readiness report, Cargo.lock,
+pinned Cargo license report, source commit/tree, and protected signing seed. It
+revalidates canonical document semantics, AppImage Type-2/x86_64 identity,
+readiness scope, update signature, and the seed's independently compiled
+public-key fingerprint before constructing output.
+
+The module deterministically generates:
+
+- SPDX 2.3 JSON covering every AppDir file, the complete AppImage, and Cargo
+  package license identifiers observed by the pinned policy tool, with
+  `NOASSERTION` retained for license conclusions; its AppDir files are
+  standalone document-described elements, so packages marked
+  `filesAnalyzed: false` do not make invalid containment claims;
+- an inventory of notice-like files already embedded in the AppDir and Cargo
+  package observed identifiers, with an explicit independent-review-required
+  disposition;
+- sorted `SHA256SUMS` for every release asset other than the signature envelope;
+  and
+- a canonical Ed25519 attestation binding the exact source commit/tree,
+  immutable release tag, lockfile, manifests, evidence, and AppImage.
+
+The four small evidence files publish as one private generation with no
+replacement. `verify-release` opens that generation descriptor-relatively,
+requires its exact four-file inventory and modes, rehashes every external
+asset, reconstructs the checksum/subject sets, and verifies the signature
+against the compiled pin. It receives no private key. Success states only that
+the signed bytes match; it does not imply operational approval or publication.
+
 ### Release readiness
 
 `release` re-authenticates the stage and validates the exact native → runtime →
 AppDir → AppImage provenance chain, including updater/config identity, final
 AppImage bytes, and Cargo lockfile.
 It clears only seven engineering gates that the supplied evidence establishes.
-All external legal, notices/SBOM, signing, automation, full platform-matrix,
-rollback, and independent-review gates remain blocking. The command cannot
-authorize publication.
+Publisher legal decisions remain outside the catalog. Independent completion
+of notice/license review, protected operation of signing and draft automation,
+the full platform matrix, rollback, and independent-review gates remain
+blocking. The command cannot authorize publication.
 
 ### Upstream automation
 
@@ -152,6 +184,14 @@ write job, which validates and proposes that record to Git.
 The workflow source does not establish that a runner, protected environment, or
 independent reviewer exists. `TRUSTED_REBUILD_ENABLED` must remain unset or
 `false` until those operational prerequisites are configured.
+
+A second manual-only workflow selects a retained generation only after its
+exact digest scope matches the merged candidate record. Its `release-signing`
+job has a protected seed and read-only repository permission; its
+`release-draft` job has repository write permission but no seed. The latter
+keylessly re-verifies the local handoff, creates a non-public draft, redownloads
+all assets, and verifies them again. There is deliberately no public-promotion
+job.
 
 ## Process and filesystem safety
 

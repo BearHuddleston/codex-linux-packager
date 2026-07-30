@@ -27,7 +27,7 @@
 <p align="center">
   <img
     src="docs/images/readme-terminal.svg"
-    alt="codex-linux-packager command-line help showing the thirteen acquisition, packaging, signing, monitoring, and assessment commands"
+    alt="codex-linux-packager command-line help showing the fifteen acquisition, packaging, signing, release-evidence, monitoring, and assessment commands"
     width="100%"
   >
 </p>
@@ -51,7 +51,7 @@
 | Producer | `io.github.bearhuddleston.codex-linux-packager.rust` |
 | Last local candidate | Codex 26.721.81911 build 5973; [digest record](data/engineering-candidate.json) |
 | Updates | Pinned Ed25519 manifest; full-file SHA-256; atomic next-launch activation |
-| Automation | Hourly public monitor; rebuild and release remain protected operations |
+| Automation | Hourly public monitor; protected candidate rebuild and draft-release workflows |
 | Release status | Engineering candidate built; public AppImage publication blocked |
 
 The tool authenticates one official desktop artifact, narrows it to the
@@ -131,9 +131,18 @@ Sparkle feed ──► inspect ──► acquire-artifact ──► stage ──
                                                         ▼
                                                release-readiness
                                                         │
-                                              cleared gates only
                                                         ▼
                                                    sign-update
+                                                        │
+                                                        ▼
+                                                 prepare-release
+                                                        │
+                                                        ▼
+                                                  verify-release
+                                                        │
+                                             protected environments
+                                                        ▼
+                                              non-public draft only
 ```
 
 | Command | Responsibility | Result |
@@ -150,6 +159,8 @@ Sparkle feed ──► inspect ──► acquire-artifact ──► stage ──
 | `pack-appimage` | Build twice, compare, extract, audit, and launch | Byte-reproducible AppImage plus provenance |
 | `generate-update-key` | Create a no-replace mode-0600 Ed25519 seed while emitting only its public identity | Protected local signing seed and public pin |
 | `sign-update` | Reconcile exact AppImage provenance and sign immutable-tag release metadata | Canonical pinned-key update manifest |
+| `prepare-release` | Reconcile the assessed artifact set, generate SPDX/notices/checksums, and sign its exact commit/tree binding | Four-file no-replace release-evidence generation |
+| `verify-release` | Rehash every release asset and keylessly verify canonical evidence against the compiled pin | Exact-set verification receipt |
 | `release-readiness` | Re-authenticate the full evidence chain and evaluate gates | Truthful blocking release assessment |
 
 Run `codex-linux-packager <command> --help` for every typed argument. Build and
@@ -173,6 +184,11 @@ directories.
   recorded GLIBC requirement above 2.36.
 - The AppDir contains a separately inventoried Rust updater and immutable
   schema-1 config bound to the compiled release-key fingerprint.
+- Release evidence contains deterministic SPDX 2.3 JSON, an inventory of
+  embedded notice-like files and Rust license identifiers observed by the
+  pinned policy tool, sorted
+  `SHA256SUMS`, and a pinned Ed25519 attestation over the exact commit, tree,
+  lockfile, manifests, evidence, and AppImage.
 
 `build-native` is offline by default and uses the digest-addressed OCI image in
 [`data/native-contract.json`](data/native-contract.json). Its explicit
@@ -253,6 +269,19 @@ cache before enabling dispatch; do not expose a general-purpose user
 workstation to untrusted workflows. The exact operational contract is in
 [`docs/automated-rebuilds.md`](docs/automated-rebuilds.md).
 
+After that digest record is reviewed and merged, the manual
+[`release-draft.yml`](.github/workflows/release-draft.yml) workflow can select
+only a retained generation whose AppImage, AppDir manifest, provenance,
+Cargo.lock, and full release-readiness scope match the merged record. A
+read-only `release-signing` job generates and verifies signed evidence; a
+separate `release-draft` job receives repository write permission but no
+signing seed, re-verifies the handoff, creates a non-public GitHub draft, then
+redownloads and verifies every asset.
+
+That workflow has no public-release step. Its source is implemented and tested,
+but protected environments, reviewer separation, pinned runner tools, key
+custody, and a real draft exercise must still be configured and reviewed.
+
 ## Security contract
 
 The binding scope is [`docs/threat-model.md`](docs/threat-model.md).
@@ -295,10 +324,13 @@ assessment completed. Read `stable_publication_permitted` and
 `blocking_gate_ids`; with the current cataloged gates, the expected publication
 value is `false`.
 
-Stable publication remains blocked on complete notices and SBOM, protected use
-of the implemented signing operation and release automation, a complete
-desktop and FUSE matrix, publication rollback/recovery rehearsal, and frozen
-review of one exact commit and artifact digest set. See
+Stable publication remains blocked on independent completion and review of
+notices and SBOM licensing assertions, protected operation of the implemented
+signing and draft-release path, a complete desktop and FUSE matrix,
+publication rollback/recovery rehearsal, and frozen review of one exact commit
+and artifact digest set. The deterministic SPDX, notice inventory, checksums,
+attestation, and keyless verifier are implemented; their existence does not
+clear those operational gates. See
 [`docs/release-gates.md`](docs/release-gates.md).
 
 The gate catalog deliberately does not decide whether a publisher has payload
