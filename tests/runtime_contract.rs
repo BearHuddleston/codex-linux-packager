@@ -9,13 +9,18 @@ fn embedded_runtime_contract_matches_authenticated_desktop_resources() {
     assert_eq!(contract.schema, 1);
     assert_eq!(contract.target.os, "linux");
     assert_eq!(contract.target.architecture, "x86_64");
-    assert_eq!(contract.application.version, "26.721.81911");
-    assert_eq!(contract.application.build, "5973");
-    assert_eq!(contract.codex.version, "0.146.0-alpha.3.1");
+    assert_eq!(contract.application.version, "26.727.40816");
+    assert_eq!(contract.application.build, "6067");
+    assert_eq!(contract.codex.version, "0.146.0-alpha.9.2");
     assert_eq!(
         contract.codex.revision,
-        "ff75c5b939c477c49eb1bd5248da6dab71b109d1"
+        "86cc9f2177cad015befd595286d8767a650f7d13"
     );
+    assert_eq!(
+        contract.codex.package_archive_sha256,
+        "a84c7cd5a8bc14cb63e4d6688d4792c8b2254ba6cc06985e63c1538271ffa857"
+    );
+    assert_eq!(contract.codex.package_archive_bytes, 133_490_612);
     assert_eq!(contract.ripgrep.version, "15.2.0");
     assert_eq!(
         contract.ripgrep.revision,

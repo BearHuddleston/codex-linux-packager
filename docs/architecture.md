@@ -68,7 +68,7 @@ SQLite and PTY round trips before publication.
 `runtime` consumes a freshly revalidated stage, independently pinned native
 manifest, official Electron Linux x64 ZIP, and version-matched official Codex
 package. It correlates the authenticated source metadata with Codex
-0.146.0-alpha.3.1 and ripgrep 15.2.0, validates every executable, includes only
+0.146.0-alpha.9.2 and ripgrep 15.2.0, validates every executable, includes only
 the Linux x86_64 policy set, and inventories every inclusion and omission.
 
 ### AppDir and AppImage

@@ -297,12 +297,12 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
             "target is not exactly Linux x86_64".to_owned(),
         ));
     }
-    if contract.application.version != "26.721.81911"
-        || contract.application.build != "5973"
+    if contract.application.version != "26.727.40816"
+        || contract.application.build != "6067"
         || contract.electron.version != "42.3.0"
-        || contract.codex.version != "0.146.0-alpha.3.1"
-        || contract.codex.release_tag != "rust-v0.146.0-alpha.3.1"
-        || contract.codex.revision != "ff75c5b939c477c49eb1bd5248da6dab71b109d1"
+        || contract.codex.version != "0.146.0-alpha.9.2"
+        || contract.codex.release_tag != "rust-v0.146.0-alpha.9.2"
+        || contract.codex.revision != "86cc9f2177cad015befd595286d8767a650f7d13"
         || contract.codex.target != "x86_64-unknown-linux-musl"
         || contract.ripgrep.version != "15.2.0"
         || contract.ripgrep.revision != "e89fff89ac9af12e8d4ce9d5fd07beb408ca730f"
@@ -331,7 +331,7 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
     ] {
         validate_digest(value, label)?;
     }
-    if contract.codex.package_archive_bytes != 131_526_287 || contract.codex.components.len() != 6 {
+    if contract.codex.package_archive_bytes != 133_490_612 || contract.codex.components.len() != 6 {
         return Err(RuntimeError::Contract(
             "Codex package envelope differs from the reviewed release".to_owned(),
         ));
@@ -400,7 +400,7 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
         .iter()
         .map(|source| (source.name.as_str(), source.identity_marker.as_deref()))
         .collect();
-    if marker_policy.get("codex") != Some(&Some("0.146.0-alpha.3.1"))
+    if marker_policy.get("codex") != Some(&Some("0.146.0-alpha.9.2"))
         || marker_policy.get("rg") != Some(&Some("15.2.0e89fff89ac"))
         || marker_policy.get("codex-code-mode-host") != Some(&None)
     {

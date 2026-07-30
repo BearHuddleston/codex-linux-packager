@@ -92,13 +92,13 @@ fn check_upstream_fixture_reports_the_guarded_automatic_action() {
         r#"<?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
 <channel><title>Codex</title><item>
-<title>26.721.81911</title>
-<pubDate>Wed, 29 Jul 2026 07:00:18 +0000</pubDate>
-<sparkle:version>5973</sparkle:version>
-<sparkle:shortVersionString>26.721.81911</sparkle:shortVersionString>
+<title>26.727.40816</title>
+<pubDate>Thu, 30 Jul 2026 19:01:19 +0000</pubDate>
+<sparkle:version>6067</sparkle:version>
+<sparkle:shortVersionString>26.727.40816</sparkle:shortVersionString>
 <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
 <sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
-<enclosure url="https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-26.721.81911.zip" length="545069607" type="application/octet-stream" sparkle:edSignature="{signature}"/>
+<enclosure url="https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-26.727.40816.zip" length="548903666" type="application/octet-stream" sparkle:edSignature="{signature}"/>
 </item></channel></rss>"#
     );
     std::fs::write(&path, xml).expect("write fixture");
@@ -119,10 +119,10 @@ fn check_upstream_fixture_reports_the_guarded_automatic_action() {
         serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
     assert_eq!(value["schema"], 1);
     assert_eq!(value["kind"], "upstream_status");
-    assert_eq!(value["action"], "current");
+    assert_eq!(value["action"], "rebuild_candidate");
     assert_eq!(value["contract_update_required"], false);
-    assert_eq!(value["candidate_rebuild_required"], false);
-    assert_eq!(value["automatic_rebuild_permitted"], false);
+    assert_eq!(value["candidate_rebuild_required"], true);
+    assert_eq!(value["automatic_rebuild_permitted"], true);
     assert!(output.stdout.ends_with(b"\n"));
 }
 
