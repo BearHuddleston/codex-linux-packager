@@ -47,13 +47,55 @@ the manifest.
 The GitHub release must contain these exact asset names:
 
 ```text
+Cargo.lock
+SHA256SUMS
+appdir-manifest.json
 codex-desktop-unofficial-x86_64.AppImage
-provenance.json
 codex-linux-x86_64-update.json
+codex-linux-x86_64.spdx.json
+provenance.json
+release-attestation.json
+release-readiness.json
+third-party-notices.json
 ```
 
 The latest release alias serves only the small signed manifest. The signed
 payload points at the AppImage under its immutable release tag.
+
+## Release evidence
+
+`prepare-release` rehashes and reconciles the exact AppImage, provenance,
+signed update manifest, AppDir manifest, release-readiness report, Cargo.lock,
+source commit/tree, and pinned Cargo license report. It publishes a new
+four-file evidence generation containing deterministic SPDX 2.3 JSON, a
+notice/license inventory, sorted checksums, and a canonical Ed25519
+attestation. Both the update manifest and attestation must authenticate with
+the same independently compiled release-key pin.
+
+The signed subject set covers every asset listed above except
+`release-attestation.json`, whose signature is the envelope over that subject
+set. `SHA256SUMS` is itself a signed subject. `verify-release` rehashes every
+external asset and validates the evidence directory without receiving a
+private key.
+
+The notice inventory is deliberately not presented as completed legal review.
+It inventories embedded notice-like files and Cargo license identifiers
+observed by the pinned policy tool, leaves SPDX conclusions as `NOASSERTION`,
+and retains the explicit status
+`generated_inventory_requires_independent_license_review`.
+
+## Protected draft workflow
+
+`.github/workflows/release-draft.yml` is manual and draft-only. Its signing job
+has read-only repository permission, receives the protected seed through the
+`release-signing` environment, verifies that the retained generation matches
+the merged `engineering-candidate.json` digest set, and stores signed evidence
+under the private retained-output root.
+
+A separate `release-draft` job has repository write permission but receives no
+signing seed. It keylessly verifies the retained handoff, creates a non-public
+GitHub draft, redownloads every asset, and keylessly verifies the downloaded
+set. The workflow contains no public-release promotion step.
 
 ## Operational requirements
 
@@ -65,9 +107,11 @@ Before first publication:
 3. require reviewer approval for that environment;
 4. prevent pull-request jobs and proprietary application processes from
    receiving the seed;
-5. bind the signing receipt and release assets to one exact reviewed commit;
+5. bind the signing receipt, release attestation, and all release assets to one
+   exact reviewed commit/tree and merged candidate digest set;
 6. verify the public key and fingerprint independently after import; and
-7. exercise release rollback without deleting or replacing unrelated assets.
+7. exercise draft creation, redownload verification, publication rollback, and
+   key recovery without deleting or replacing unrelated assets.
 
 Loss of the seed stops updates for installed images carrying this pin.
 Suspected disclosure requires halting publication. A replacement key cannot be

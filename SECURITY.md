@@ -31,3 +31,10 @@ builds belong exclusively on a dedicated or ephemeral runner carrying the
 untrusted push or pull-request workflows. The rebuild workflow retains
 proprietary outputs locally and must not be modified to upload them without a
 separate legal and security decision.
+
+The manual draft-release workflow separates the protected signing seed from
+repository write authority. Its signing job must remain read-only; its
+repository-write job must remain keyless and draft-only. Both jobs reverify the
+exact signed asset set, but that userspace verification does not make retained
+owner-writable files immutable against a hostile process running as the same
+UID.

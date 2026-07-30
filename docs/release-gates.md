@@ -35,21 +35,59 @@ Changing any reviewed bytes requires a new assessment. These gates do not imply
 desktop-environment coverage, signing, release operations, or a determination
 of publisher rights.
 
+## Release evidence implemented after assessment
+
+`prepare-release` accepts only the exact canonical AppDir manifest, AppImage
+provenance, release-readiness assessment, Cargo.lock, signed update manifest,
+mode-0755 Type-2 AppImage, pinned Cargo license report, source commit/tree, and
+matching mode-0600 Ed25519 seed. It independently reconciles that set and
+publishes, with no replacement:
+
+- `codex-linux-x86_64.spdx.json`, a deterministic SPDX 2.3 document containing
+  every AppDir file digest, the complete AppImage digest, and Cargo package
+  license identifiers observed by the pinned policy tool, while retaining
+  `NOASSERTION` for license conclusions; AppDir files are standalone
+  document-described elements because no SPDX package-analysis/verification
+  code is asserted;
+- `third-party-notices.json`, a deterministic inventory of every notice-like
+  file already embedded in the AppDir and every Cargo package's sorted observed
+  identifier set;
+- `SHA256SUMS`, covering the AppImage, provenance, update manifest, AppDir
+  manifest, release-readiness report, Cargo.lock, SPDX, and notice inventory;
+  and
+- `release-attestation.json`, a canonical Ed25519 signature over the exact
+  commit, tree, immutable release tag, every checksum subject, and supporting
+  evidence digest.
+
+`verify-release` needs no private key. It uses the independently compiled
+public-key pin, rehashes every external asset, reconstructs the complete
+checksum and subject sets, and rejects noncanonical, extra, missing, or
+conflicting evidence.
+
+These commands establish deterministic evidence mechanics. The generated notice
+document deliberately says
+`generated_inventory_requires_independent_license_review`: an inventory is not
+a publisher's legal review, protected key operation, independent approval, or
+publication authorization.
+
 ## Gates presently blocking stable publication
 
-- **Complete notices and deterministic SBOM:** the tooling dependency policy is
-  documented, but complete notices and an artifact-bound SBOM for the
-  proprietary payload and every redistributed component are not complete.
-- **Signed checksums and protected keys:** the Rust command can now generate a
-  private seed, reconcile AppImage provenance, sign a canonical full-file
-  checksum manifest, and self-verify it against the compiled pin. No reviewed
-  protected environment/key-custody operation is yet bound to a candidate.
-- **Signed attestation:** no signed attestation binds an exact commit, tree,
-  Cargo.lock, inputs, and output digest set.
-- **Protected automation:** hourly monitoring and a dispatch-only trusted-runner
-  workflow are implemented, but no reviewed runner registration, protected
-  environment, independent reviewer, tag policy, or release automation
-  evidence is bound to the candidate.
+- **Complete notices and deterministic SBOM:** deterministic SPDX and notice
+  inventories are implemented and locally reproducible, but their
+  `NOASSERTION` file conclusions and embedded-notice inventory still require
+  independent completion and review for every redistributed component.
+- **Signed checksums and protected keys:** exact checksum construction,
+  pinned-key signing, and keyless verification are implemented. No reviewed
+  protected environment, custody/recovery procedure, or approved signing run
+  is yet bound to the frozen candidate.
+- **Signed attestation:** the canonical exact-commit/tree/lockfile/asset
+  attestation is implemented and locally verified, but no protected signing
+  run plus independent approval is bound to the frozen candidate.
+- **Protected automation:** hourly monitoring, dispatch-only candidate rebuild,
+  and manual draft-release workflows are implemented. No reviewed runner
+  registration, protected environment/reviewer policy, pinned Cargo-license
+  tool configuration, tag policy, or successful protected draft exercise is
+  yet bound to the candidate.
 - **Complete platform matrix:** host Wayland/X11 extract-and-run and a
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.
@@ -61,14 +99,15 @@ of publisher rights.
   candidate source and artifact bytes.
 
 The machine-readable gate identifiers and required actions are defined in
-`src/release.rs`. Operational evidence needs a separately designed, protected
-review/signing workflow before a future implementation may clear it; adding a
-boolean CLI flag would not be adequate.
+`src/release.rs`. Clearing an operational gate requires evidence from the
+reviewed protected workflow and an exact frozen candidate; adding a boolean CLI
+flag would not be adequate.
 
-The automatic rebuild workflow is intentionally not release automation. It
+The automatic rebuild workflow is intentionally not publication automation. It
 builds and inventories the updater, retains the AppImage locally, and opens
-only a digest-record pull request. Enabling it does not satisfy the
-protected-automation gate or authorize use of the signing seed.
+only a digest-record pull request. The separate release workflow can create
+only a non-public draft. Enabling either workflow does not satisfy the
+protected-automation gate or authorize a public release.
 
 ## Review discipline
 

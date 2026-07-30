@@ -36,9 +36,10 @@ proprietary payloads.
   application code. MIT.
 - `ed25519-dalek` 3.0.0: maintained pure-Rust strict RFC 8032 verification for
   official source artifacts and pinned AppImage update manifests. The release
-  command also signs canonical metadata from an explicitly supplied protected
-  raw seed; key generation uses operating-system randomness through `rustix`.
-  Default features remain disabled. MIT/Apache-2.0.
+  commands also sign canonical update metadata and exact-set release
+  attestations from an explicitly supplied protected raw seed; key generation
+  uses operating-system randomness through `rustix`. Default features remain
+  disabled. MIT/Apache-2.0.
 - `sha2` 0.11.0: SHA-256 identities and integrity validation throughout the
   pipeline. MIT/Apache-2.0.
 - `zip` 6.0.0: member decompression only after the original raw ZIP framing,
@@ -65,3 +66,21 @@ The OCI runtime, sudo, bubblewrap, readelf, Node/npm, Electron, appimagetool,
 Type-2 runtime, and container package set are not Cargo dependencies. Commands
 accept or embed their exact versions/digests and record the observed identities
 in phase provenance.
+
+## Release-evidence tools
+
+The protected draft workflow invokes `cargo-deny list --format json --layout
+crate` through an absolute path and refuses it unless its complete executable
+SHA-256 matches `PACKAGER_CARGO_DENY_SHA256`. The command's documented output is
+a per-crate list of license information, not a preserved SPDX license
+expression. Release evidence therefore records sorted observed identifiers and
+retains `NOASSERTION` for conclusions instead of inventing `AND`/`OR`
+semantics. See the upstream
+[`cargo-deny list` contract](https://embarkstudios.github.io/cargo-deny/cli/list.html)
+and [license detection limitations](https://embarkstudios.github.io/cargo-deny/checks/licenses/index.html).
+
+SPDX packages remain `filesAnalyzed: false`; the AppDir entries are standalone
+document-described files rather than invalid package `CONTAINS` claims. This
+follows the SPDX 2.3
+[`FilesAnalyzed` and verification-code rules](https://spdx.github.io/spdx-spec/v2.3/package-information/)
+and [`DESCRIBES` relationship semantics](https://spdx.github.io/spdx-spec/v2.3/relationships-between-SPDX-elements/).
