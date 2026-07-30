@@ -15,6 +15,7 @@ pub mod manifest;
 pub mod native;
 pub mod process;
 pub mod release;
+pub mod release_evidence;
 pub mod runtime;
 pub mod signature;
 pub mod staging;

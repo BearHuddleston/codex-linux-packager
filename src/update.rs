@@ -20,7 +20,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::appimage::AppImageManifest;
-use crate::manifest::{PRODUCER_IDENTIFIER, SCHEMA_VERSION, to_json_line};
+use crate::manifest::{
+    PRODUCER_IDENTIFIER, SCHEMA_VERSION, is_canonical_utc_timestamp, to_json_line,
+};
 use crate::signature::verify_ed25519_bytes;
 
 const UPDATE_CONTRACT_KIND: &str = "linux_x86_64_update_contract";
@@ -1244,7 +1246,7 @@ fn validate_payload_identity(payload: &UpdatePayload) -> Result<(), UpdateError>
             "source commit is not 40 lowercase hexadecimal characters".to_owned(),
         ));
     }
-    if !is_utc_second_timestamp(&payload.published_at) {
+    if !is_canonical_utc_timestamp(&payload.published_at) {
         return Err(UpdateError::Manifest(
             "published timestamp is not canonical UTC seconds".to_owned(),
         ));
@@ -1364,29 +1366,6 @@ fn validate_digest(value: &str, label: &str) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-fn is_utc_second_timestamp(value: &str) -> bool {
-    if value.len() != 20 {
-        return false;
-    }
-    let bytes = value.as_bytes();
-    for (index, expected) in [
-        (4, b'-'),
-        (7, b'-'),
-        (10, b'T'),
-        (13, b':'),
-        (16, b':'),
-        (19, b'Z'),
-    ] {
-        if bytes.get(index) != Some(&expected) {
-            return false;
-        }
-    }
-    bytes
-        .iter()
-        .enumerate()
-        .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16 | 19) || byte.is_ascii_digit())
 }
 
 fn decode_canonical<const N: usize>(encoded: &str, label: &str) -> Result<[u8; N], String> {

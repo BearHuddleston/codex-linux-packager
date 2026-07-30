@@ -112,3 +112,61 @@ pub fn to_json_line<T: Serialize>(value: &T) -> Result<String, PackagerError> {
     encoded.push('\n');
     Ok(encoded)
 }
+
+/// Returns whether `value` is one real Gregorian UTC second in the canonical
+/// `YYYY-MM-DDTHH:MM:SSZ` form used by signed documents.
+pub(crate) fn is_canonical_utc_timestamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 20
+        || bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(16) != Some(&b':')
+        || bytes.get(19) != Some(&b'Z')
+        || bytes.iter().enumerate().any(|(index, byte)| {
+            !matches!(index, 4 | 7 | 10 | 13 | 16 | 19) && !byte.is_ascii_digit()
+        })
+    {
+        return false;
+    }
+
+    let Some(year) = decimal(&bytes[0..4]) else {
+        return false;
+    };
+    let Some(month) = decimal(&bytes[5..7]) else {
+        return false;
+    };
+    let Some(day) = decimal(&bytes[8..10]) else {
+        return false;
+    };
+    let Some(hour) = decimal(&bytes[11..13]) else {
+        return false;
+    };
+    let Some(minute) = decimal(&bytes[14..16]) else {
+        return false;
+    };
+    let Some(second) = decimal(&bytes[17..19]) else {
+        return false;
+    };
+    let maximum_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_gregorian_leap_year(year) => 29,
+        2 => 28,
+        _ => return false,
+    };
+    year != 0 && (1..=maximum_day).contains(&day) && hour < 24 && minute < 60 && second < 60
+}
+
+fn decimal(bytes: &[u8]) -> Option<u32> {
+    bytes.iter().try_fold(0_u32, |value, byte| {
+        value
+            .checked_mul(10)?
+            .checked_add(u32::from(byte.checked_sub(b'0')?))
+    })
+}
+
+const fn is_gregorian_leap_year(year: u32) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}

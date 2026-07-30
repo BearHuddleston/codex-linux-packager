@@ -120,6 +120,13 @@ fn manifest_rejects_tampering_unknown_fields_and_a_self_supplied_key() {
         signature_base64, ..
     } = manifest;
     assert!(!signature_base64.is_empty());
+
+    let mut invalid_date = payload;
+    invalid_date.published_at = "2026-02-29T25:61:61Z".to_owned();
+    assert!(
+        create_signed_update_manifest(&invalid_date, &signing_key.to_bytes()).is_err(),
+        "a digit-shaped but impossible UTC timestamp must be rejected"
+    );
 }
 
 fn digest(bytes: &[u8]) -> String {
