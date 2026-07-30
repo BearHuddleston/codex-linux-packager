@@ -28,6 +28,8 @@ fn help_exposes_every_planned_command_concept() {
         "pack-appimage",
         "generate-update-key",
         "sign-update",
+        "prepare-release",
+        "verify-release",
         "release-readiness",
     ] {
         assert!(

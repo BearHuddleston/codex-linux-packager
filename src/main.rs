@@ -18,6 +18,10 @@ use codex_linux_packager::feed::{
 use codex_linux_packager::manifest::{ErrorDocument, to_json_line};
 use codex_linux_packager::native::{NativeBuildRequest, build_native};
 use codex_linux_packager::release::{ReleaseAssessmentRequest, assess_release_readiness};
+use codex_linux_packager::release_evidence::{
+    ReleaseEvidencePreparationRequest, ReleaseEvidenceVerificationRequest,
+    prepare_release_evidence, verify_release_evidence,
+};
 use codex_linux_packager::runtime::{RuntimeAssemblyRequest, assemble_runtime, runtime_contract};
 use codex_linux_packager::staging::stage_artifact_file;
 use codex_linux_packager::update::{
@@ -252,6 +256,71 @@ fn run() -> anyhow::Result<ExitCode> {
                 ErrorDocument::new("update_manifest_signing_failed", error.to_string())
             });
             emit_result(result, "update manifest signing")
+        }
+        PackagingCommand::PrepareRelease {
+            appimage,
+            provenance,
+            update_manifest,
+            release_readiness,
+            appdir_manifest,
+            cargo_lock,
+            cargo_license_report,
+            private_key,
+            source_commit,
+            source_tree,
+            created_at,
+            output,
+        } => {
+            let request = ReleaseEvidencePreparationRequest {
+                appimage: appimage.clone(),
+                provenance: provenance.clone(),
+                update_manifest: update_manifest.clone(),
+                release_readiness: release_readiness.clone(),
+                appdir_manifest: appdir_manifest.clone(),
+                cargo_lock: cargo_lock.clone(),
+                cargo_license_report: cargo_license_report.clone(),
+                private_key: private_key.clone(),
+                source_commit: source_commit.clone(),
+                source_tree: source_tree.clone(),
+                created_at: created_at.clone(),
+                output: output.clone(),
+            };
+            let result = prepare_release_evidence(&request).map_err(|error| {
+                ErrorDocument::new("release_evidence_preparation_failed", error.to_string())
+            });
+            emit_result(result, "release evidence preparation")
+        }
+        PackagingCommand::VerifyRelease {
+            evidence,
+            appimage,
+            provenance,
+            update_manifest,
+            release_readiness,
+            appdir_manifest,
+            cargo_lock,
+            source_commit,
+            source_tree,
+        } => {
+            let request = ReleaseEvidenceVerificationRequest {
+                evidence: evidence.clone(),
+                appimage: appimage.clone(),
+                provenance: provenance.clone(),
+                update_manifest: update_manifest.clone(),
+                release_readiness: release_readiness.clone(),
+                appdir_manifest: appdir_manifest.clone(),
+                cargo_lock: cargo_lock.clone(),
+                source_commit: source_commit.clone(),
+                source_tree: source_tree.clone(),
+            };
+            let result = codex_linux_packager::update::embedded_update_contract()
+                .map_err(anyhow::Error::from)
+                .and_then(|contract| {
+                    verify_release_evidence(&request, &contract).map_err(anyhow::Error::from)
+                })
+                .map_err(|error| {
+                    ErrorDocument::new("release_evidence_verification_failed", error.to_string())
+                });
+            emit_result(result, "release evidence verification")
         }
         PackagingCommand::ReleaseReadiness {
             stage,

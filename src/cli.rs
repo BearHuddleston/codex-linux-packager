@@ -273,6 +273,75 @@ pub enum PackagingCommand {
         #[arg(long, value_name = "JSON")]
         output: PathBuf,
     },
+    /// Prepare deterministic signed release evidence without publishing a release.
+    PrepareRelease {
+        /// Exact verified Linux x86_64 Type-2 AppImage.
+        #[arg(long, value_name = "APPIMAGE")]
+        appimage: PathBuf,
+        /// Canonical AppImage provenance emitted by `pack-appimage`.
+        #[arg(long, value_name = "JSON")]
+        provenance: PathBuf,
+        /// Canonical signed update manifest emitted by `sign-update`.
+        #[arg(long, value_name = "JSON")]
+        update_manifest: PathBuf,
+        /// Canonical engineering release-readiness assessment.
+        #[arg(long, value_name = "JSON")]
+        release_readiness: PathBuf,
+        /// Canonical first AppDir manifest consumed by AppImage construction.
+        #[arg(long, value_name = "JSON")]
+        appdir_manifest: PathBuf,
+        /// Exact Cargo.lock from the assessed source tree.
+        #[arg(long, value_name = "LOCKFILE")]
+        cargo_lock: PathBuf,
+        /// JSON from pinned `cargo deny list --format json --layout crate`.
+        #[arg(long, value_name = "JSON")]
+        cargo_license_report: PathBuf,
+        /// Raw 32-byte mode-0600 release-signing seed.
+        #[arg(long, value_name = "RAW_KEY")]
+        private_key: PathBuf,
+        /// Exact 40-character source commit used for the release.
+        #[arg(long, value_name = "HEX")]
+        source_commit: String,
+        /// Exact 40-character Git source tree used for the release.
+        #[arg(long, value_name = "HEX")]
+        source_tree: String,
+        /// Explicit canonical UTC timestamp such as `2026-07-30T18:00:00Z`.
+        #[arg(long, value_name = "RFC3339")]
+        created_at: String,
+        /// New release-evidence generation published with no replacement.
+        #[arg(long, value_name = "DIRECTORY")]
+        output: PathBuf,
+    },
+    /// Keylessly reverify signed release evidence and exact external assets.
+    VerifyRelease {
+        /// Four-file release-evidence generation.
+        #[arg(long, value_name = "DIRECTORY")]
+        evidence: PathBuf,
+        /// Exact verified Linux x86_64 Type-2 AppImage.
+        #[arg(long, value_name = "APPIMAGE")]
+        appimage: PathBuf,
+        /// Canonical AppImage provenance.
+        #[arg(long, value_name = "JSON")]
+        provenance: PathBuf,
+        /// Canonical signed update manifest.
+        #[arg(long, value_name = "JSON")]
+        update_manifest: PathBuf,
+        /// Canonical engineering release-readiness assessment.
+        #[arg(long, value_name = "JSON")]
+        release_readiness: PathBuf,
+        /// Canonical first AppDir manifest.
+        #[arg(long, value_name = "JSON")]
+        appdir_manifest: PathBuf,
+        /// Exact Cargo.lock from the assessed source tree.
+        #[arg(long, value_name = "LOCKFILE")]
+        cargo_lock: PathBuf,
+        /// Expected exact 40-character source commit.
+        #[arg(long, value_name = "HEX")]
+        source_commit: String,
+        /// Expected exact 40-character Git source tree.
+        #[arg(long, value_name = "HEX")]
+        source_tree: String,
+    },
     /// Assess one exact candidate against every independent release gate.
     ReleaseReadiness {
         /// Authenticated stage generation to re-authenticate completely.
@@ -316,6 +385,8 @@ impl PackagingCommand {
             Self::PackAppimage { .. } => "pack-appimage",
             Self::GenerateUpdateKey { .. } => "generate-update-key",
             Self::SignUpdate { .. } => "sign-update",
+            Self::PrepareRelease { .. } => "prepare-release",
+            Self::VerifyRelease { .. } => "verify-release",
             Self::ReleaseReadiness { .. } => "release-readiness",
         }
     }
