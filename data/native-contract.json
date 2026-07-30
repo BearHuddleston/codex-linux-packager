@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "producer": "io.github.bearhuddleston.codex-linux-packager.rust",
+  "target": {
+    "os": "linux",
+    "architecture": "x86_64",
+    "npm_architecture": "x64"
+  },
+  "electron": {
+    "version": "42.3.0",
+    "node_version": "24.15.0",
+    "module_abi": 146,
+    "napi": 10,
+    "linux_x64_zip_sha256": "487a667ca6a734b958c16cff1df74d9d44d2c18a6cccdb4dd51f6301a356c420",
+    "headers_tar_sha256": "821009f9c1830050d894aef9e61906cb0a537b2000b2d9bbed9985fff1d5e0d0"
+  },
+  "host": {
+    "minimum_node_version": "22.12.0"
+  },
+  "build_image": {
+    "reference": "docker.io/library/node@sha256:20a424ecd1d2064a44e12fe287bf3dae443aab31dc5e0c0cb6c74bef9c78911c",
+    "architecture": "amd64",
+    "operating_system": "linux",
+    "node_version": "22.22.0",
+    "npm_version": "10.9.4",
+    "glibc_version": "2.36",
+    "gcc_version": "12.2.0",
+    "maximum_output_glibc_version": "2.36"
+  },
+  "packages": [
+    {
+      "name": "better-sqlite3",
+      "version": "12.9.0",
+      "source_asar_package_json_sha256": "9d2524247288858cfba9fcd1636cf5540b95e87c4be0993eb61ecf9b2d0a8d14",
+      "npm_tarball_sha512": "wqUv4Gm3toFpHDQmaKD4QhZm3g1DjUBI0yzS4UBl6lElUmXFYdTQmmEDpAFa5o8FiFiymURypEnfVHzILKaxqQ=="
+    },
+    {
+      "name": "node-pty",
+      "version": "1.1.0",
+      "source_asar_package_json_sha256": "f8b6a14f7022c14f1cd5d109486f5dacd32bffb63a9a63e38eced37dacb47439",
+      "npm_tarball_sha512": "20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg=="
+    }
+  ],
+  "source_patches": [
+    {
+      "package": "better-sqlite3",
+      "package_version": "12.9.0",
+      "upstream_repository": "https://github.com/WiseLibs/better-sqlite3",
+      "upstream_commit": "5bb63a2f4c5aa34de2c292b983d2b6c4fcfc6f94",
+      "patch_sha256": "f7019e9a83e8a39f323db743b8bd179384e0d7aa741257e2141bbd5af0a4a421",
+      "files": [
+        {
+          "path": "src/better_sqlite3.cpp",
+          "before_sha256": "c343ae9a8c876ed62d620562ffe9acedcdb105f49ba196b4e79f9aab8ffe16fa",
+          "after_sha256": "01b2333517538a24919cc0b916c5a436561d7f712bac7befb6850e9f4b042dc5"
+        },
+        {
+          "path": "src/util/helpers.cpp",
+          "before_sha256": "4d273c4ee67337fbe3440ec49058a2ee5cbe6a627b14917dc1e1c98fda8178f1",
+          "after_sha256": "7b763d2caa40f70bf6726c0f70ea50c1db69c7fa453b3bc2ec19577e99800984"
+        },
+        {
+          "path": "src/util/macros.cpp",
+          "before_sha256": "c27bbcf3ac17bc0d729684bd06dbde2880e4f6e662b360e1bcd8ede8d373b9a0",
+          "after_sha256": "09d5605bb65c8d43c0e235f878cbbffc98d79b1e35ee05b7c33766ce114a13a4"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "producer": "io.github.bearhuddleston.codex-linux-packager.rust",
+  "target": {
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "application": {
+    "version": "26.721.81911",
+    "build": "5973",
+    "app_asar_sha256": "87dd334bf84ce32e954287b4a72688db5d987dd06d7a8529bc08f71ef5ac3a61"
+  },
+  "electron": {
+    "version": "42.3.0",
+    "linux_x64_zip_sha256": "487a667ca6a734b958c16cff1df74d9d44d2c18a6cccdb4dd51f6301a356c420"
+  },
+  "codex": {
+    "version": "0.146.0-alpha.3.1",
+    "release_tag": "rust-v0.146.0-alpha.3.1",
+    "revision": "ff75c5b939c477c49eb1bd5248da6dab71b109d1",
+    "target": "x86_64-unknown-linux-musl",
+    "package_archive_sha256": "71696f571d99b83ca09ef482653315fe8b7bfc1c18253662da5406e8d3f17158",
+    "package_archive_bytes": 131526287,
+    "components": [
+      {
+        "archive_path": "bin/codex",
+        "runtime_path": "resources/codex",
+        "disposition": "included",
+        "sha256": "ae77c5e73db36d15c131381c5d620278abed999650867a7490b13384e1f5842d",
+        "bytes": 308039728,
+        "mode": "0755"
+      },
+      {
+        "archive_path": "bin/codex-code-mode-host",
+        "runtime_path": "resources/codex-code-mode-host",
+        "disposition": "included",
+        "sha256": "c77634e9a95e19d82b2963a3dcf90adca3791fa3d5ae0fa14e76f5a5f1c74be7",
+        "bytes": 46139288,
+        "mode": "0755"
+      },
+      {
+        "archive_path": "codex-package.json",
+        "runtime_path": "resources/codex-package.json",
+        "disposition": "included",
+        "sha256": "b3f57cd5518953f430044db626066fb336773dd28a355f3747ce99962489e643",
+        "bytes": 215,
+        "mode": "0644"
+      },
+      {
+        "archive_path": "codex-path/rg",
+        "runtime_path": "resources/rg",
+        "disposition": "included",
+        "sha256": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849",
+        "bytes": 5408904,
+        "mode": "0755"
+      },
+      {
+        "archive_path": "codex-resources/bwrap",
+        "runtime_path": "resources/codex-resources/bwrap",
+        "disposition": "included",
+        "sha256": "7df960565a0dece99240ea4b9d0e011307817f9f3b73176c7b71fda44fe84765",
+        "bytes": 529776,
+        "mode": "0755"
+      },
+      {
+        "archive_path": "codex-resources/zsh/bin/zsh",
+        "runtime_path": null,
+        "disposition": "omitted_glibc_2_38_optional_zsh",
+        "sha256": "67faaaa89242c4a332e16e508a1977cffc24bf7fca31d4411cdfd101f3831ef3",
+        "bytes": 898480,
+        "mode": null
+      }
+    ]
+  },
+  "ripgrep": {
+    "version": "15.2.0",
+    "revision": "e89fff89ac9af12e8d4ce9d5fd07beb408ca730f",
+    "linux_x64_musl_sha256": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849"
+  },
+  "authenticated_source_resources": [
+    {
+      "name": "codex",
+      "sha256": "26dfecda06a78310ebf1f8202feac6b33bf8dbbe47c23e32ad690653b44e28c8",
+      "bytes": 291570352,
+      "format": "macho_x86_64",
+      "identity_marker": "0.146.0-alpha.3.1"
+    },
+    {
+      "name": "codex-code-mode-host",
+      "sha256": "1db01b37b5eed92c53023ad6dd7c5c774bd5bd8f9c6c9303ebc9b3ac417535eb",
+      "bytes": 49115440,
+      "format": "macho_x86_64",
+      "identity_marker": null
+    },
+    {
+      "name": "rg",
+      "sha256": "46d7afd08c5d078bc2c13582b1b93b368c5b77acec87e0f6c581f26ec235178d",
+      "bytes": 4439232,
+      "format": "macho_x86_64",
+      "identity_marker": "15.2.0e89fff89ac"
+    }
+  ]
+}

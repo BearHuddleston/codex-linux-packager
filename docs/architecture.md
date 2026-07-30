@@ -1,54 +1,118 @@
 # Architecture
 
-The project begins as one binary-plus-library crate. Modules are added only when
-a vertical behavior reaches them; the repository does not pre-create an empty
-module for every future phase.
+The project is one binary-plus-library crate targeting Linux x86_64. The
+library owns typed contracts, bounded parsing, validation, deterministic JSON,
+transactions, and phase implementations. The binary owns CLI composition and
+uses `anyhow` only at that boundary. `#![forbid(unsafe_code)]` remains enabled;
+safe `rustix` APIs provide the required Linux filesystem/process primitives.
 
-## Layering
+## Contract and document boundary
 
-The library owns typed domain structures, validation, deterministic JSON
-documents, and phase implementations. Library errors use `thiserror`. The binary
-owns command-line composition and may use `anyhow` only at that boundary.
-`#![forbid(unsafe_code)]` is enabled initially.
+Persisted documents use schema `1`, deny unknown fields, and require producer
+`io.github.bearhuddleston.codex-linux-packager.rust`. Consumers validate both
+identity and semantics and require canonical compact JSON with a trailing
+newline where the document is a pipeline input. Python schema 3 and other
+producers are rejected without migration.
 
-Machine-readable documents begin at schema `1` and carry the producer identifier
-`io.github.bearhuddleston.codex-linux-packager.rust`. Deserializers deny unknown
-fields and validate both values. There is no implicit compatibility with the
-Python implementation's schema-3 staging state.
+Every publication claim is
+`bytes_at_durable_commit_boundary_under_documented_threat_model`. This is a
+transaction boundary, not a same-UID immutability claim.
 
-## Planned vertical phases
+## Implemented verticals
 
-1. **Foundation:** contract, threat model, deterministic JSON primitives,
-   repository-boundary enforcement, and canonical verification.
-2. **Feed inspection:** bounded exact-origin HTTPS retrieval and strict Sparkle
-   XML parsing into typed release metadata.
-3. **Artifact authentication and staging:** exact-byte Ed25519 verification,
-   structural ZIP preflight, bundle reconciliation, narrow extraction, and
-   transactional generation publication.
-4. **Native build:** integrity-locked dependency graph, exact Electron ABI,
-   Linux x86_64 ELF validation, and real SQLite/PTTY runtime probes.
-5. **Runtime assembly:** independently pinned Electron, Codex CLI, ripgrep, and
-   native inputs with a complete normalized manifest.
-6. **AppDir and AppImage:** deterministic filesystem metadata, sandbox-aware
-   launch behavior, twice-built byte equality, final extraction and ABI audit,
-   and real launch tests.
-7. **Release readiness:** legal, notices, SBOM, signing, attestation, protected
-   automation, platform matrix, and rollback exercises.
+### Feed inspection
 
-## Data flow
+`feed` parses a bounded, deliberately narrow Sparkle XML grammar. `download`
+retrieves only the fixed exact-origin Rustls HTTPS endpoint with redirects and
+content decoding disabled, bounded headers/body, and strict length handling.
+Tests use local fixtures and local HTTP servers.
 
-Every phase consumes immutable-by-digest inputs for the duration of that
-operation, produces a typed manifest, and verifies its own output before its
-documented publication boundary. A later phase independently revalidates the
-digests it consumes. This is a provenance chain, not a claim that ordinary
-owner-writable paths remain immutable after a command returns.
+### Artifact authentication and stage
 
-Acquired payloads and build products stay in ignored working directories. The
-Git tree contains only original source, documentation, tests, small synthetic
-fixtures, and compatible open-source dependency metadata.
+`signature` performs strict Ed25519 verification over the complete artifact
+with an independently pinned key/fingerprint. `archive` performs original raw
+ZIP framing/resource preflight before using the general ZIP parser. `asar`
+validates canonical Pickle/JSON framing, paths, storage layout, and declared
+integrity. `staging` publishes exactly the authenticated archive, `app.asar`,
+and provenance through a no-replace durable transaction.
 
-## Platform boundary
+`extract` expands only integrity-verified packed ASAR files into a new
+generation. Declared external files are never invented.
 
-The initial and only supported target is Linux x86_64. Foreign Mach-O, PE, and
-non-x86_64 ELF files are excluded and inventoried when runtime assembly is
-implemented. Other architectures require a new explicit design and test matrix.
+### Native build
+
+`native` reconciles the authenticated application with
+`data/native-contract.json`, including Electron 42.3.0, Node 24.15.0, module
+ABI 146, the locked `better-sqlite3` and `node-pty` graph, and reviewed exact
+source patches. Compilation runs as the invoking UID in a digest-addressed
+Node 22.22.0 Debian Bookworm image with registry networking disabled unless
+explicitly authorized.
+
+Outputs must be Linux x86_64 ELF files whose GLIBC requirements do not exceed
+the controlled 2.36 policy. The exact Electron runtime must complete genuine
+SQLite and PTY round trips before publication.
+
+### Runtime assembly
+
+`runtime` consumes a freshly revalidated stage, independently pinned native
+manifest, official Electron Linux x64 ZIP, and version-matched official Codex
+package. It correlates the authenticated source metadata with Codex
+0.146.0-alpha.3.1 and ripgrep 15.2.0, validates every executable, includes only
+the Linux x86_64 policy set, and inventories every inclusion and omission.
+
+### AppDir and AppImage
+
+`appdir` constructs a complete deterministic tree with normalized modes and
+timestamps, a generic original MIT-licensed icon, an explicit unofficial
+desktop identity, and an AppRun policy for auto/Wayland/X11. AppRun disables
+the unusable setuid helper while preserving Chromium's user-namespace sandbox;
+it never passes `--no-sandbox`.
+
+`appimage` requires independently built AppDirs, stable-tag digest-pinned
+appimagetool and Type-2 runtime inputs, deterministic single-worker SquashFS,
+and byte equality across two builds. Both builds, extraction, and host launches
+use bubblewrap network/PID isolation. It then:
+
+- extracts the final AppImage and checks every file against AppDir provenance;
+- audits every included ELF with a digest-pinned `readelf`;
+- performs genuine extract-and-run launches on host Wayland and X11; and
+- performs a non-root X11 launch in the exact Debian Bookworm/glibc-2.36 OCI
+  baseline with `--network=none`, dropped capabilities, and bounded process
+  cleanup.
+
+The baseline Dockerfile and snapshot sources are repository inputs; the exact
+local image ID and package inventory digest are runtime evidence.
+
+### Release readiness
+
+`release` re-authenticates the stage and validates the exact native → runtime →
+AppDir → AppImage provenance chain, final AppImage bytes, and Cargo lockfile.
+It clears only seven engineering gates that the supplied evidence establishes.
+All external legal, notices/SBOM, signing, automation, full platform-matrix,
+rollback, and independent-review gates remain blocking. The command cannot
+authorize publication.
+
+## Process and filesystem safety
+
+`process` executes argument arrays with deterministic environments, bounded
+stdout/stderr, deadlines, process groups, and descendant cleanup. No shell
+command is constructed from untrusted strings.
+
+Untrusted regular inputs are opened with `O_NOFOLLOW`, bounded by descriptor
+metadata, read completely, and checked again for in-operation mutation.
+Directory traversals are bounded and reject links and special files. Private
+generations publish with no replacement and preserve an existing destination
+on every precommit failure.
+
+These mechanisms address the in-scope cooperative/error/race model. They do not
+protect ordinary owner-writable outputs from arbitrary hostile writes by the
+same UID after return.
+
+## Repository and platform boundary
+
+Acquired payloads and generated outputs remain under ignored directories. Git
+contains only original Rust source, documentation, text contracts, reviewed
+patches, container recipes, and synthetic tests.
+
+Linux x86_64 is the only supported target. Other architectures require a new
+contract, implementation, and test matrix.

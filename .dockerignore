@@ -1,0 +1,4 @@
+**
+!containers/
+!containers/appimage-baseline.Dockerfile
+!containers/debian-snapshot.sources

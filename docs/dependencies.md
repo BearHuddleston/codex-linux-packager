@@ -1,0 +1,62 @@
+# Dependency selection
+
+All direct release dependencies are exact-version requirements in `Cargo.toml`;
+the complete transitive graph is fixed by `Cargo.lock`. `cargo deny check`
+rejects unapproved licenses, registries, Git sources, wildcards, and duplicate
+crate versions. `cargo audit` checks the locked graph against the RustSec
+advisory database.
+
+This document covers tooling dependencies only. It is not the complete
+third-party notice or SBOM required before redistributing an AppImage containing
+proprietary payloads.
+
+## Composition and data formats
+
+- `clap` 4.5.54: derive-based typed CLI parsing with no ad-hoc argument
+  grammar. MIT/Apache-2.0.
+- `serde` 1.0.228 and `serde_json` 1.0.151: typed schema-1 documents,
+  deny-unknown-field decoding, and deterministic compact encoding.
+  MIT/Apache-2.0.
+- `thiserror` 2.0.17: structured library errors. MIT/Apache-2.0.
+- `anyhow` 1.0.104: context only at the binary composition boundary.
+  MIT/Apache-2.0.
+- `base64` 0.22.1: canonical fixed-length Sparkle signature/key decoding, with
+  default features disabled. MIT/Apache-2.0.
+
+## Security-sensitive parsing and cryptography
+
+- `ureq` 3.3.0: small blocking HTTPS client with only the Rustls feature.
+  Redirects and content decoding are disabled by application policy; response
+  identity, headers, lengths, and bodies remain bounded. MIT/Apache-2.0.
+- `quick-xml` 0.41.0: event-driven bounded feed and XML property-list parsing.
+  This release contains the fixes for RUSTSEC-2026-0194 and
+  RUSTSEC-2026-0195. Dangerous or ambiguous constructs are rejected by
+  application code. MIT.
+- `ed25519-dalek` 3.0.0: maintained pure-Rust strict RFC 8032 verification,
+  with default features disabled and no production private-key functionality.
+  MIT/Apache-2.0.
+- `sha2` 0.11.0: SHA-256 identities and integrity validation throughout the
+  pipeline. MIT/Apache-2.0.
+- `zip` 6.0.0: member decompression only after the original raw ZIP framing,
+  name, mode, method, and resource preflight. Only the zlib-rs deflate feature
+  is enabled. MIT.
+- `flate2` 1.1.9 with `zlib-rs`: bounded gzip/deflate decoding for exact
+  contract inputs without a system zlib dependency. `flate2` is
+  MIT/Apache-2.0 and the selected backend is Zlib-licensed.
+- `tar` 0.4.46 without default features: bounded manual iteration of exact
+  Electron/Codex tar inputs; paths and types are validated by application
+  policy. MIT/Apache-2.0.
+
+## Operating-system boundary
+
+- `rustix` 1.1.4 with `fs`, `process`, and `rand`: safe APIs for no-follow
+  descriptor opens, descriptor-relative operations, `RENAME_NOREPLACE`,
+  durability, random private-generation names, process groups, and bounded
+  cleanup while retaining `#![forbid(unsafe_code)]`. MIT/Apache-2.0.
+- `tempfile` 3.27.0 is development-only and provides isolated synthetic test
+  roots. MIT/Apache-2.0.
+
+The OCI runtime, sudo, bubblewrap, readelf, Node/npm, Electron, appimagetool,
+Type-2 runtime, and container package set are not Cargo dependencies. Commands
+accept or embed their exact versions/digests and record the observed identities
+in phase provenance.

@@ -11,7 +11,7 @@ while CI separately checks the MSRV.
 
 The Phase 0 dependency set is deliberately small:
 
-- `clap` with derive support for typed CLI parsing. Version 4.6.4 declares Rust
+- `clap` with derive support for typed CLI parsing. Version 4.5.54 supports Rust
   1.85 and establishes the project MSRV.
 - `serde` and `serde_json` for typed, deterministic JSON documents.
 - `thiserror` for library error types.

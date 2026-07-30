@@ -1,0 +1,13 @@
+Types: deb
+URIs: https://snapshot.debian.org/archive/debian/20260730T082136Z
+Suites: bookworm bookworm-updates
+Components: main
+Check-Valid-Until: no
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: https://snapshot.debian.org/archive/debian-security/20260730T083809Z
+Suites: bookworm-security
+Components: main
+Check-Valid-Until: no
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg

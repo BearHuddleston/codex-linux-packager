@@ -1,0 +1,14 @@
+{
+  "name": "codex-linux-packager-native-contract",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Integrity-locked build graph for Linux x86_64 Electron native modules",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "12.9.0",
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "4.0.4"
+  }
+}

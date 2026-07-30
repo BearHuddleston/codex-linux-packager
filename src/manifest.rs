@@ -65,16 +65,16 @@ impl DocumentHeader {
 }
 
 impl ErrorDocument {
-    /// Reports a command whose vertical implementation is not present yet.
+    /// Constructs a deterministic versioned command failure.
     #[must_use]
-    pub fn phase_not_implemented(command: &str) -> Self {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             schema: SCHEMA_VERSION,
             producer: PRODUCER_IDENTIFIER,
             ok: false,
             error: ErrorDetail {
-                code: "phase_not_implemented",
-                message: format!("command `{command}` is not implemented in phase 0"),
+                code,
+                message: message.into(),
             },
         }
     }

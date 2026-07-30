@@ -24,6 +24,7 @@ fn help_exposes_every_planned_command_concept() {
         "assemble-runtime",
         "build-appdir",
         "pack-appimage",
+        "release-readiness",
     ] {
         assert!(
             stdout
@@ -35,9 +36,23 @@ fn help_exposes_every_planned_command_concept() {
 }
 
 #[test]
-fn unimplemented_phase_is_an_explicit_versioned_json_error() {
+fn inspect_artifact_failure_is_an_explicit_versioned_json_error() {
+    let temporary = tempfile::tempdir().expect("temporary directory");
+    let missing = temporary.path().join("missing.zip");
     let output = Command::new(env!("CARGO_BIN_EXE_codex-linux-packager"))
-        .arg("inspect")
+        .arg("inspect-artifact")
+        .arg("--artifact")
+        .arg(missing)
+        .args([
+            "--signature",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+            "--length",
+            "1",
+            "--version",
+            "26.721.81911",
+            "--build",
+            "5973",
+        ])
         .output()
         .expect("CLI should start");
 
@@ -46,14 +61,51 @@ fn unimplemented_phase_is_an_explicit_versioned_json_error() {
         output.stdout.is_empty(),
         "failures must not write to stdout"
     );
-    assert_eq!(
-        String::from_utf8(output.stderr).expect("error document should be UTF-8"),
-        concat!(
-            "{\"schema\":1,",
-            "\"producer\":\"io.github.bearhuddleston.codex-linux-packager.rust\",",
-            "\"ok\":false,",
-            "\"error\":{\"code\":\"phase_not_implemented\",",
-            "\"message\":\"command `inspect` is not implemented in phase 0\"}}\n"
-        )
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("stderr should be JSON");
+    assert_eq!(value["schema"], 1);
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["error"]["code"], "artifact_inspection_failed");
+    assert!(output.stderr.ends_with(b"\n"));
+}
+
+#[test]
+fn inspect_fixture_emits_one_deterministic_success_document() {
+    let temporary = tempfile::tempdir().expect("create temporary directory");
+    let path = temporary.path().join("feed.xml");
+    let signature =
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+    let xml = format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+<channel><title>Codex</title><item>
+<title>26.721.81911</title>
+<pubDate>Wed, 29 Jul 2026 07:00:18 +0000</pubDate>
+<sparkle:version>5973</sparkle:version>
+<sparkle:shortVersionString>26.721.81911</sparkle:shortVersionString>
+<sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+<sparkle:hardwareRequirements>x86_64</sparkle:hardwareRequirements>
+<enclosure url="https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-26.721.81911.zip" length="545069607" type="application/octet-stream" sparkle:edSignature="{signature}"/>
+</item></channel></rss>"#
     );
+    std::fs::write(&path, xml).expect("write fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_codex-linux-packager"))
+        .args(["inspect", "--fixture"])
+        .arg(&path)
+        .output()
+        .expect("CLI should start");
+
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty(), "success must not write to stderr");
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be JSON");
+    assert_eq!(value["schema"], 1);
+    assert_eq!(value["kind"], "feed_inspection");
+    assert_eq!(value["releases"][0]["hardware_requirements"], "x86_64");
+    assert!(output.stdout.ends_with(b"\n"));
 }
