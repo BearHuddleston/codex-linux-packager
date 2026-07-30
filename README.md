@@ -17,6 +17,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#pipeline">Pipeline</a> ·
+  <a href="#in-app-updates">In-app updates</a> ·
   <a href="#automatic-rebuilds">Automatic rebuilds</a> ·
   <a href="#security-contract">Security</a> ·
   <a href="#release-boundary">Release boundary</a> ·
@@ -26,7 +27,7 @@
 <p align="center">
   <img
     src="docs/images/readme-terminal.svg"
-    alt="codex-linux-packager command-line help showing the eleven acquisition, packaging, monitoring, and assessment commands"
+    alt="codex-linux-packager command-line help showing the thirteen acquisition, packaging, signing, monitoring, and assessment commands"
     width="100%"
   >
 </p>
@@ -49,7 +50,8 @@
 | Persisted documents | Schema `1`, deterministic compact JSON |
 | Producer | `io.github.bearhuddleston.codex-linux-packager.rust` |
 | Last local candidate | Codex 26.721.81911 build 5973; [digest record](data/engineering-candidate.json) |
-| Automation | Hourly public monitor; trusted rebuild disabled until its isolated runner is configured |
+| Updates | Pinned Ed25519 manifest; full-file SHA-256; atomic next-launch activation |
+| Automation | Hourly public monitor; rebuild and release remain protected operations |
 | Release status | Engineering candidate built; public AppImage publication blocked |
 
 The tool authenticates one official desktop artifact, narrows it to the
@@ -93,6 +95,18 @@ ambiguous HTTP responses, authenticates the complete bytes with the
 independently compiled production trust root, and publishes with no
 replacement.
 
+When a public release is eventually authorized, end users will download the
+single `codex-desktop-unofficial-x86_64.AppImage` asset from this repository's
+Releases page, mark it executable, and launch it:
+
+```bash
+chmod +x codex-desktop-unofficial-x86_64.AppImage
+./codex-desktop-unofficial-x86_64.AppImage
+```
+
+There is no public AppImage attached today. The install contract is documented
+now so it does not have to change when the remaining release gates are cleared.
+
 ## Pipeline
 
 ```text
@@ -116,6 +130,10 @@ Sparkle feed ──► inspect ──► acquire-artifact ──► stage ──
                                                         │
                                                         ▼
                                                release-readiness
+                                                        │
+                                              cleared gates only
+                                                        ▼
+                                                   sign-update
 ```
 
 | Command | Responsibility | Result |
@@ -128,8 +146,10 @@ Sparkle feed ──► inspect ──► acquire-artifact ──► stage ──
 | `extract` | Expand integrity-verified packed ASAR files | New no-replace extraction generation |
 | `build-native` | Rebuild the locked `better-sqlite3` and `node-pty` graph | Verified Linux x86_64 native outputs |
 | `assemble-runtime` | Combine pinned Electron, Codex CLI, ripgrep, and native inputs | Normalized runtime plus complete manifest |
-| `build-appdir` | Construct the deterministic filesystem and launcher | Timestamp- and mode-normalized AppDir |
+| `build-appdir` | Construct the deterministic filesystem, updater, config, and launcher | Timestamp- and mode-normalized AppDir |
 | `pack-appimage` | Build twice, compare, extract, audit, and launch | Byte-reproducible AppImage plus provenance |
+| `generate-update-key` | Create a no-replace mode-0600 Ed25519 seed while emitting only its public identity | Protected local signing seed and public pin |
+| `sign-update` | Reconcile exact AppImage provenance and sign immutable-tag release metadata | Canonical pinned-key update manifest |
 | `release-readiness` | Re-authenticate the full evidence chain and evaluate gates | Truthful blocking release assessment |
 
 Run `codex-linux-packager <command> --help` for every typed argument. Build and
@@ -151,12 +171,54 @@ directories.
   on host Wayland, host X11, and a controlled older-GLIBC baseline.
 - Every extracted ELF requirement is recorded; `release-readiness` rejects a
   recorded GLIBC requirement above 2.36.
+- The AppDir contains a separately inventoried Rust updater and immutable
+  schema-1 config bound to the compiled release-key fingerprint.
 
 `build-native` is offline by default and uses the digest-addressed OCI image in
 [`data/native-contract.json`](data/native-contract.json). Its explicit
 `--allow-network` flag is recorded in provenance. `pack-appimage` requires two
 independently constructed AppDirs, digest-matched packaging tools, both Wayland
 and X11 backends, and the exact locally verified older-GLIBC image ID.
+
+## In-app updates
+
+The packaged launcher starts `codex-linux-updater` quietly beside Codex whenever
+the application is launched from a writable Type-2 AppImage. It downloads a
+small canonical manifest from the fixed GitHub Releases URL, verifies its
+Ed25519 signature against the independently compiled key in
+[`data/update-contract.json`](data/update-contract.json), and accepts only a
+strictly newer Linux x86_64 version/build.
+
+For an accepted release, the updater:
+
+1. downloads the complete AppImage with bounded headers, a strict
+   `Content-Length`, and no content decoding;
+2. verifies the signed byte count, full SHA-256, and Linux x86_64 Type-2
+   AppImage identity;
+3. uses Linux `RENAME_EXCHANGE` to activate it atomically at the existing path;
+4. retains the previous bytes as
+   `<name>.rollback-<version>-<build>`; and
+5. leaves the running process untouched—the new bytes take effect on the next
+   launch.
+
+No key from a downloaded manifest is trusted, no delta is executed, and the
+official Codex payload is not modified. The release signer emits manifests with
+`sign-update`; its private seed is never stored in Git and must be held by a
+protected release environment. Standard AppImage `.zsync` metadata is not the
+security boundary: this implementation deliberately verifies a signed
+full-file digest before activation.
+
+Run a foreground check with:
+
+```bash
+./codex-desktop-unofficial-x86_64.AppImage --codex-linux-update-now
+```
+
+Set `CODEX_LINUX_DISABLE_UPDATES=1` to suppress the background check. Updates
+cannot replace a symlink launch path or an AppImage in a read-only directory;
+download a fresh release manually in those cases. Atomic exchange guarantees
+the committed bytes under the documented threat model, not permanent
+immutability against the owning UID.
 
 ## Automatic rebuilds
 
@@ -176,14 +238,14 @@ The transition is deliberately two-step:
    dispatches [`rebuild-candidate.yml`](.github/workflows/rebuild-candidate.yml)
    to a dedicated `codex-packager-trusted` runner.
 
-That trusted workflow acquires the exact source, executes every implemented
-phase offline where required, builds twice, performs real Wayland/X11 and
-older-GLIBC launches, retains the AppImage beneath a configured local output
-root, and opens a pull request containing only the new digest record. It never
-uploads the AppImage or proprietary inputs to GitHub and never creates a
-release. The payload-handling job has read-only repository permission and no
-persisted checkout credential; only a separate GitHub-hosted digest-record job
-can write the pull request.
+That trusted workflow acquires the exact source, builds both Rust executables,
+executes every implemented phase offline where required, builds the AppImage
+twice, performs real Wayland/X11 and older-GLIBC launches, retains the result
+beneath a configured local output root, and opens a pull request containing
+only the new digest record. It does not upload the AppImage or create a release.
+The payload-handling job has read-only repository permission and no persisted
+checkout credential; only a separate GitHub-hosted digest-record job can write
+the pull request.
 
 No matching self-hosted runner or enablement variable is installed by cloning
 the repository. Configure a dedicated or ephemeral runner and its reviewed
@@ -199,6 +261,11 @@ The implementation is designed to reject malformed, oversized, ambiguous,
 truncated, unauthenticated, path-unsafe, or resource-exhausting inputs. It uses
 bounded reads and subprocess output, no-follow file opens, deterministic
 environments, process-group cleanup, and no-replace publication.
+
+The application-update key is independent of the official Sparkle artifact key.
+The Sparkle key authenticates downloaded desktop source; the update key
+authenticates this project's final Linux release bytes. Neither downloaded
+artifact nor update metadata can authorize its own key rotation.
 
 Publication guarantees the bytes produced at the documented durable commit
 boundary. It does **not** make ordinary user-owned files permanently immutable
@@ -228,9 +295,10 @@ assessment completed. Read `stable_publication_permitted` and
 `blocking_gate_ids`; with the current cataloged gates, the expected publication
 value is `false`.
 
-Stable publication remains blocked on complete notices and SBOM, protected
-signing and automation, a complete desktop and FUSE matrix, rollback/recovery
-rehearsal, and frozen review of one exact commit and artifact digest set. See
+Stable publication remains blocked on complete notices and SBOM, protected use
+of the implemented signing operation and release automation, a complete
+desktop and FUSE matrix, publication rollback/recovery rehearsal, and frozen
+review of one exact commit and artifact digest set. See
 [`docs/release-gates.md`](docs/release-gates.md).
 
 The gate catalog deliberately does not decide whether a publisher has payload
@@ -238,9 +306,10 @@ redistribution or trademark authority. Those are publisher responsibilities
 outside `release-readiness`; `stable_publication_permitted` is not a legal
 opinion.
 
-In particular, “automatic rebuild” does not mean “automatic public release.”
-The source repository is public; the generated AppImage is not a GitHub
-release.
+In particular, “automatic rebuild” does not yet mean “automatic public
+release.” The source repository is public; the generated AppImage is not
+currently a GitHub release. The updater becomes useful when an authorized
+release channel starts publishing signed manifests and their exact AppImages.
 
 ## Repository boundary
 
@@ -276,6 +345,7 @@ Useful project documents:
 | [`docs/threat-model.md`](docs/threat-model.md) | Binding security scope |
 | [`docs/release-gates.md`](docs/release-gates.md) | Engineering evidence versus publication approval |
 | [`docs/automated-rebuilds.md`](docs/automated-rebuilds.md) | Scheduled detection and trusted-runner operating contract |
+| [`docs/update-signing.md`](docs/update-signing.md) | Pinned AppImage update key and protected signing contract |
 | [`docs/dependencies.md`](docs/dependencies.md) | Exact dependency-selection rationale |
 | [`docs/decisions/`](docs/decisions/) | Accepted architecture decision records |
 

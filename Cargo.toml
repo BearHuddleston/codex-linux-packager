@@ -35,5 +35,9 @@ path = "src/lib.rs"
 name = "codex-linux-packager"
 path = "src/main.rs"
 
+[[bin]]
+name = "codex-linux-updater"
+path = "src/bin/codex-linux-updater.rs"
+
 [lints.rust]
 unsafe_code = "forbid"

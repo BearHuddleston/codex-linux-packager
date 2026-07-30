@@ -20,6 +20,9 @@ use codex_linux_packager::native::{NativeBuildRequest, build_native};
 use codex_linux_packager::release::{ReleaseAssessmentRequest, assess_release_readiness};
 use codex_linux_packager::runtime::{RuntimeAssemblyRequest, assemble_runtime, runtime_contract};
 use codex_linux_packager::staging::stage_artifact_file;
+use codex_linux_packager::update::{
+    UpdateSigningRequest, generate_update_signing_key, sign_update_release,
+};
 use codex_linux_packager::upstream::{assess_upstream_status, engineering_candidate_record};
 
 fn main() -> ExitCode {
@@ -158,12 +161,16 @@ fn run() -> anyhow::Result<ExitCode> {
         PackagingCommand::BuildAppdir {
             runtime,
             runtime_manifest_sha256,
+            updater,
+            updater_sha256,
             source_date_epoch,
             output,
         } => {
             let request = AppDirRequest {
                 runtime: runtime.clone(),
                 runtime_manifest_sha256: runtime_manifest_sha256.clone(),
+                updater: updater.clone(),
+                updater_sha256: updater_sha256.clone(),
                 output: output.clone(),
                 source_date_epoch: *source_date_epoch,
             };
@@ -218,6 +225,33 @@ fn run() -> anyhow::Result<ExitCode> {
             let result = pack_appimage(&request)
                 .map_err(|error| ErrorDocument::new("appimage_build_failed", error.to_string()));
             emit_result(result, "AppImage build")
+        }
+        PackagingCommand::GenerateUpdateKey { private_key } => {
+            let result = generate_update_signing_key(private_key).map_err(|error| {
+                ErrorDocument::new("update_key_generation_failed", error.to_string())
+            });
+            emit_result(result, "update key generation")
+        }
+        PackagingCommand::SignUpdate {
+            appimage,
+            provenance,
+            private_key,
+            source_commit,
+            published_at,
+            output,
+        } => {
+            let request = UpdateSigningRequest {
+                appimage: appimage.clone(),
+                provenance: provenance.clone(),
+                private_key: private_key.clone(),
+                source_commit: source_commit.clone(),
+                published_at: published_at.clone(),
+                output: output.clone(),
+            };
+            let result = sign_update_release(&request).map_err(|error| {
+                ErrorDocument::new("update_manifest_signing_failed", error.to_string())
+            });
+            emit_result(result, "update manifest signing")
         }
         PackagingCommand::ReleaseReadiness {
             stage,

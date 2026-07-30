@@ -18,6 +18,13 @@ Do not publish a stable AppImage or imply release readiness based only on green
 unit tests. The independent legal, supply-chain, platform, runtime, signing, and
 recovery gates in `docs/release-gates.md` remain mandatory.
 
+Packaged AppImages contain a background HTTPS updater. Reports involving its
+schema-1 manifest parser, pinned release key, GitHub redirect allowlist,
+full-file verification, adjacent lock, atomic exchange, or rollback-name
+publication are security-sensitive. The AppImage update key is deliberately
+independent from the official Sparkle source-artifact key; neither downloaded
+metadata nor a source artifact may rotate it.
+
 The hourly public monitor handles feed metadata only. Payload acquisition and
 builds belong exclusively on a dedicated or ephemeral runner carrying the
 `codex-packager-trusted` label; never attach that label to a runner exposed to

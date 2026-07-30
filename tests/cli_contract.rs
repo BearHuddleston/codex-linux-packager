@@ -26,6 +26,8 @@ fn help_exposes_every_planned_command_concept() {
         "assemble-runtime",
         "build-appdir",
         "pack-appimage",
+        "generate-update-key",
+        "sign-update",
         "release-readiness",
     ] {
         assert!(

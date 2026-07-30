@@ -14,15 +14,22 @@ use thiserror::Error;
 use crate::extract::{ExtractionError, TreePublisher};
 use crate::manifest::{PRODUCER_IDENTIFIER, SCHEMA_VERSION, to_json_line};
 use crate::runtime::{RuntimeInventoryEntry, RuntimeManifest, classify_binary};
+use crate::update::embedded_update_contract;
+use crate::updater::{
+    UpdateRuntimeConfig, create_runtime_update_config, validate_runtime_update_config,
+};
 
 const MAX_RUNTIME_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_RUNTIME_FILE_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_UPDATER_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_RUNTIME_ENTRIES: usize = 20_000;
 const PUBLICATION_SCOPE: &str = "bytes_at_durable_commit_boundary_under_documented_threat_model";
 const RUNTIME_PREFIX: &str = "usr/lib/codex-desktop";
 pub(crate) const APPDIR_MANIFEST_PATH: &str = "usr/share/codex-linux-packager/appdir-manifest.json";
 const RUNTIME_MANIFEST_PATH: &str = "usr/share/codex-linux-packager/runtime-manifest.json";
+const UPDATER_PATH: &str = "usr/libexec/codex-linux-packager/codex-linux-updater";
+const UPDATE_CONFIG_PATH: &str = "usr/share/codex-linux-packager/update-config.json";
 
 const APP_RUN: &str = r#"#!/bin/sh
 set -eu
@@ -34,6 +41,21 @@ else
 fi
 
 program=$app_root/usr/lib/codex-desktop/codex-desktop
+updater=$app_root/usr/libexec/codex-linux-packager/codex-linux-updater
+update_config=$app_root/usr/share/codex-linux-packager/update-config.json
+
+if [ "${1:-}" = "--codex-linux-update-now" ]; then
+    if [ -z "${APPIMAGE:-}" ]; then
+        echo "manual update requires a running Type-2 AppImage" >&2
+        exit 64
+    fi
+    exec "$updater" --current-appimage "$APPIMAGE" --config "$update_config"
+fi
+
+if [ -n "${APPIMAGE:-}" ] && [ "${CODEX_LINUX_DISABLE_UPDATES:-0}" != "1" ]; then
+    "$updater" --current-appimage "$APPIMAGE" --config "$update_config" >/dev/null 2>&1 &
+fi
+
 case "${CODEX_LINUX_DISPLAY_BACKEND:-auto}" in
     auto)
         exec "$program" --disable-setuid-sandbox "$@"
@@ -81,6 +103,10 @@ pub struct AppDirRequest {
     pub runtime: PathBuf,
     /// Independently recorded SHA-256 of `runtime/manifest.json`.
     pub runtime_manifest_sha256: String,
+    /// Release-built `codex-linux-updater` executable.
+    pub updater: PathBuf,
+    /// Independently recorded SHA-256 of the updater executable.
+    pub updater_sha256: String,
     /// New AppDir path.
     pub output: PathBuf,
     /// Explicit normalized timestamp for every file and directory.
@@ -117,6 +143,20 @@ pub struct AppDirManifest {
     pub publication_scope: String,
     /// Independently supplied runtime manifest digest.
     pub runtime_manifest_sha256: String,
+    /// Codex desktop application version embedded in this AppDir.
+    pub application_version: String,
+    /// Codex desktop application build embedded in this AppDir.
+    pub application_build: String,
+    /// Independently supplied updater executable digest.
+    pub updater_sha256: String,
+    /// Digest of the generated immutable runtime update config.
+    pub update_config_sha256: String,
+    /// Fixed signed-manifest URL compiled into the updater.
+    pub update_manifest_url: String,
+    /// Independently compiled Ed25519 update-key fingerprint.
+    pub update_public_key_sha256: String,
+    /// Truthful activation behavior exposed by `AppRun`.
+    pub update_policy: String,
     /// Timestamp applied to the complete tree.
     pub source_date_epoch: i64,
     /// Runtime executable name chosen so Electron reports packaged mode.
@@ -181,10 +221,37 @@ pub fn build_appdir(request: &AppDirRequest) -> Result<AppDirManifest, AppDirErr
         .chain(std::iter::once("manifest.json".to_owned()))
         .collect();
     validate_exact_tree(&request.runtime, &expected_files, None, false)?;
+    let updater_bytes = read_absolute_regular(
+        &request.updater,
+        MAX_UPDATER_BYTES,
+        0o755,
+        "updater executable",
+    )?;
+    verify_sha256(
+        &updater_bytes,
+        &request.updater_sha256,
+        "independently pinned updater executable",
+    )?;
+    if classify_binary(&updater_bytes)
+        .map_err(|error| AppDirError::Input(format!("classify updater executable: {error}")))?
+        .label()
+        != "elf_x86_64"
+    {
+        return Err(AppDirError::Input(
+            "updater executable is not Linux x86_64 ELF".to_owned(),
+        ));
+    }
+    let update_config = create_runtime_update_config(
+        &runtime_manifest.application_version,
+        &runtime_manifest.application_build,
+    )
+    .map_err(|error| AppDirError::Input(error.to_string()))?;
+    let update_config_bytes = to_json_line(&update_config)
+        .map_err(|error| AppDirError::Input(format!("encode runtime update config: {error}")))?;
 
     let mut publisher = TreePublisher::new(&request.output)
         .map_err(|error| AppDirError::Transaction(error.to_string()))?;
-    let mut entries = Vec::with_capacity(included.len().saturating_add(5));
+    let mut entries = Vec::with_capacity(included.len().saturating_add(7));
     let build = (|| -> Result<(), AppDirError> {
         for (source_path, entry) in &included {
             let content = read_relative_regular(
@@ -215,6 +282,24 @@ pub fn build_appdir(request: &AppDirRequest) -> Result<AppDirManifest, AppDirErr
             &manifest_bytes,
             0o644,
         )?);
+        publisher
+            .write_file(UPDATER_PATH, &updater_bytes, 0o755)
+            .map_err(|error| AppDirError::Transaction(error.to_string()))?;
+        entries.push(appdir_entry(
+            UPDATER_PATH,
+            "independently-pinned:codex-linux-updater",
+            &updater_bytes,
+            0o755,
+        )?);
+        publisher
+            .write_file(UPDATE_CONFIG_PATH, update_config_bytes.as_bytes(), 0o644)
+            .map_err(|error| AppDirError::Transaction(error.to_string()))?;
+        entries.push(appdir_entry(
+            UPDATE_CONFIG_PATH,
+            "generated:schema-1-pinned-update-config",
+            update_config_bytes.as_bytes(),
+            0o644,
+        )?);
         for (path, source, bytes, mode) in [
             (
                 ".DirIcon",
@@ -222,7 +307,12 @@ pub fn build_appdir(request: &AppDirRequest) -> Result<AppDirManifest, AppDirErr
                 GENERIC_ICON.as_bytes(),
                 0o644,
             ),
-            ("AppRun", "generated:app-run-v1", APP_RUN.as_bytes(), 0o755),
+            (
+                "AppRun",
+                "generated:app-run-v2-with-updater",
+                APP_RUN.as_bytes(),
+                0o755,
+            ),
             (
                 "codex-linux-packager.desktop",
                 "generated:desktop-entry-v1",
@@ -242,7 +332,8 @@ pub fn build_appdir(request: &AppDirRequest) -> Result<AppDirManifest, AppDirErr
             entries.push(appdir_entry(path, source, bytes, mode)?);
         }
         entries.sort_by(|left, right| left.path.cmp(&right.path));
-        let appdir_manifest = manifest_document(request, entries.clone());
+        let appdir_manifest =
+            manifest_document(request, &runtime_manifest, &update_config, entries.clone());
         let encoded = to_json_line(&appdir_manifest).map_err(|error| {
             AppDirError::Transaction(format!("encode AppDir manifest: {error}"))
         })?;
@@ -258,7 +349,7 @@ pub fn build_appdir(request: &AppDirRequest) -> Result<AppDirManifest, AppDirErr
         return Err(cleanup_error(&mut publisher, error));
     }
 
-    let manifest = manifest_document(request, entries);
+    let manifest = manifest_document(request, &runtime_manifest, &update_config, entries);
     match publisher.commit() {
         Ok(()) => Ok(manifest),
         Err(ExtractionError::PostCommitDurability(message)) => {
@@ -357,6 +448,10 @@ fn validate_appdir_generation_with_root_policy(
         || !contains_bytes(&launcher_bytes, b"CODEX_LINUX_DISPLAY_BACKEND")
         || !contains_bytes(&launcher_bytes, b"--ozone-platform=wayland")
         || !contains_bytes(&launcher_bytes, b"--ozone-platform=x11")
+        || !contains_bytes(&launcher_bytes, b"CODEX_LINUX_DISABLE_UPDATES")
+        || !contains_bytes(&launcher_bytes, b"--codex-linux-update-now")
+        || !contains_bytes(&launcher_bytes, b"--current-appimage")
+        || !contains_bytes(&launcher_bytes, b"APPIMAGE")
     {
         return Err(AppDirError::Input(
             "AppRun does not preserve sandboxing and explicit display selection".to_owned(),
@@ -387,6 +482,49 @@ fn validate_appdir_generation_with_root_policy(
             "embedded runtime manifest digest conflicts with AppDir provenance".to_owned(),
         ));
     }
+    let updater = manifest
+        .entries
+        .iter()
+        .find(|entry| entry.path == UPDATER_PATH)
+        .ok_or_else(|| AppDirError::Input("AppDir has no updater executable".to_owned()))?;
+    if updater.sha256 != manifest.updater_sha256 || updater.mode != "0755" {
+        return Err(AppDirError::Input(
+            "updater entry conflicts with AppDir provenance".to_owned(),
+        ));
+    }
+    let update_config_entry = manifest
+        .entries
+        .iter()
+        .find(|entry| entry.path == UPDATE_CONFIG_PATH)
+        .ok_or_else(|| AppDirError::Input("AppDir has no update config".to_owned()))?;
+    if update_config_entry.sha256 != manifest.update_config_sha256 {
+        return Err(AppDirError::Input(
+            "update config entry conflicts with AppDir provenance".to_owned(),
+        ));
+    }
+    let update_config_bytes = read_relative_regular(root, UPDATE_CONFIG_PATH, 64 * 1024, 0o644)?;
+    let update_config: UpdateRuntimeConfig = serde_json::from_slice(&update_config_bytes)
+        .map_err(|error| AppDirError::Input(format!("parse embedded update config: {error}")))?;
+    let canonical = to_json_line(&update_config)
+        .map_err(|error| AppDirError::Input(format!("encode embedded update config: {error}")))?;
+    if canonical.as_bytes() != update_config_bytes {
+        return Err(AppDirError::Input(
+            "embedded update config is not canonical schema-1 JSON".to_owned(),
+        ));
+    }
+    let update_contract =
+        embedded_update_contract().map_err(|error| AppDirError::Input(error.to_string()))?;
+    validate_runtime_update_config(&update_config, &update_contract)
+        .map_err(|error| AppDirError::Input(error.to_string()))?;
+    if update_config.application_version != manifest.application_version
+        || update_config.application_build != manifest.application_build
+        || update_config.manifest_url != manifest.update_manifest_url
+        || update_config.public_key_sha256 != manifest.update_public_key_sha256
+    {
+        return Err(AppDirError::Input(
+            "embedded update config conflicts with AppDir release identity".to_owned(),
+        ));
+    }
     Ok(manifest)
 }
 
@@ -403,12 +541,34 @@ fn validate_appdir_manifest(manifest: &AppDirManifest) -> Result<(), AppDirError
         || manifest.identity_notice
             != "unofficial_and_unaffiliated_tooling_no_payload_redistribution_or_trademark_rights"
         || manifest.icon_license != "original_generic_non_branding_icon_MIT"
+        || manifest.update_policy
+            != "background_full_download_activate_for_next_launch_keep_versioned_rollback"
     {
         return Err(AppDirError::Input(
             "AppDir manifest identity or policy differs".to_owned(),
         ));
     }
     validate_digest(&manifest.runtime_manifest_sha256, "runtime manifest")?;
+    validate_digest(&manifest.updater_sha256, "updater executable")?;
+    validate_digest(&manifest.update_config_sha256, "update config")?;
+    validate_digest(&manifest.update_public_key_sha256, "update public key")?;
+    let expected_update_contract =
+        embedded_update_contract().map_err(|error| AppDirError::Input(error.to_string()))?;
+    if manifest.update_manifest_url != expected_update_contract.manifest_url
+        || manifest.update_public_key_sha256 != expected_update_contract.public_key_sha256
+    {
+        return Err(AppDirError::Input(
+            "AppDir update URL or key fingerprint differs from the compiled contract".to_owned(),
+        ));
+    }
+    for (value, label) in [
+        (&manifest.application_version, "application version"),
+        (&manifest.application_build, "application build"),
+    ] {
+        if value.is_empty() || value.len() > 64 || !value.is_ascii() {
+            return Err(AppDirError::Input(format!("{label} is invalid")));
+        }
+    }
     if !(315_532_800..=4_102_444_800).contains(&manifest.source_date_epoch)
         || manifest.entries.is_empty()
         || manifest.entries.len() > MAX_RUNTIME_ENTRIES
@@ -450,6 +610,8 @@ fn validate_appdir_manifest(manifest: &AppDirManifest) -> Result<(), AppDirError
         "usr/lib/codex-desktop/resources/app.asar",
         "usr/lib/codex-desktop/resources/codex",
         "usr/lib/codex-desktop/resources/rg",
+        UPDATER_PATH,
+        UPDATE_CONFIG_PATH,
         RUNTIME_MANIFEST_PATH,
     ] {
         if !paths.contains(required) {
@@ -462,18 +624,26 @@ fn validate_appdir_manifest(manifest: &AppDirManifest) -> Result<(), AppDirError
 }
 
 fn validate_request(request: &AppDirRequest) -> Result<(), AppDirError> {
-    for (label, path) in [("runtime", &request.runtime), ("output", &request.output)] {
+    for (label, path) in [
+        ("runtime", &request.runtime),
+        ("updater", &request.updater),
+        ("output", &request.output),
+    ] {
         if !path.is_absolute() {
             return Err(AppDirError::Input(format!("{label} path must be absolute")));
         }
     }
-    if request.runtime.starts_with(&request.output) || request.output.starts_with(&request.runtime)
+    if request.runtime.starts_with(&request.output)
+        || request.output.starts_with(&request.runtime)
+        || request.updater.starts_with(&request.output)
+        || request.output.starts_with(&request.updater)
     {
         return Err(AppDirError::Input(
             "AppDir output must not alias or contain its runtime input".to_owned(),
         ));
     }
     validate_digest(&request.runtime_manifest_sha256, "runtime manifest")?;
+    validate_digest(&request.updater_sha256, "updater executable")?;
     if !(315_532_800..=4_102_444_800).contains(&request.source_date_epoch) {
         return Err(AppDirError::Input(
             "SOURCE_DATE_EPOCH must be within 1980-01-01..=2100-01-01".to_owned(),
@@ -651,13 +821,30 @@ fn runtime_output_path(source: &str) -> String {
     }
 }
 
-fn manifest_document(request: &AppDirRequest, entries: Vec<AppDirEntry>) -> AppDirManifest {
+fn manifest_document(
+    request: &AppDirRequest,
+    runtime_manifest: &RuntimeManifest,
+    update_config: &UpdateRuntimeConfig,
+    entries: Vec<AppDirEntry>,
+) -> AppDirManifest {
+    let update_config_sha256 = entries
+        .iter()
+        .find(|entry| entry.path == UPDATE_CONFIG_PATH)
+        .map_or_else(String::new, |entry| entry.sha256.clone());
     AppDirManifest {
         schema: SCHEMA_VERSION,
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: "linux_x86_64_appdir".to_owned(),
         publication_scope: PUBLICATION_SCOPE.to_owned(),
         runtime_manifest_sha256: request.runtime_manifest_sha256.clone(),
+        application_version: runtime_manifest.application_version.clone(),
+        application_build: runtime_manifest.application_build.clone(),
+        updater_sha256: request.updater_sha256.clone(),
+        update_config_sha256,
+        update_manifest_url: update_config.manifest_url.clone(),
+        update_public_key_sha256: update_config.public_key_sha256.clone(),
+        update_policy: "background_full_download_activate_for_next_launch_keep_versioned_rollback"
+            .to_owned(),
         source_date_epoch: request.source_date_epoch,
         packaged_executable: format!("{RUNTIME_PREFIX}/codex-desktop"),
         display_backend_policy:
@@ -868,6 +1055,55 @@ fn read_relative_regular(
         return Err(AppDirError::Input(
             "runtime file identity changed while reading".to_owned(),
         ));
+    }
+    Ok(bytes)
+}
+
+fn read_absolute_regular(
+    path: &Path,
+    maximum: u64,
+    expected_mode: u32,
+    label: &str,
+) -> Result<Vec<u8>, AppDirError> {
+    let descriptor = open(
+        path,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|error| AppDirError::Input(format!("open {label}: {error}")))?;
+    let before = fstat(&descriptor)
+        .map_err(|error| AppDirError::Input(format!("inspect {label}: {error}")))?;
+    if FileType::from_raw_mode(before.st_mode) != FileType::RegularFile
+        || before.st_size < 0
+        || u64::try_from(before.st_size)
+            .ok()
+            .is_none_or(|size| size == 0 || size > maximum)
+        || before.st_mode & 0o7777 != expected_mode
+    {
+        return Err(AppDirError::Input(format!(
+            "{label} has the wrong type, size, or mode"
+        )));
+    }
+    let expected_size = u64::try_from(before.st_size)
+        .map_err(|_| AppDirError::Input(format!("{label} size does not fit u64")))?;
+    let capacity = usize::try_from(expected_size)
+        .map_err(|_| AppDirError::Input(format!("{label} size does not fit usize")))?;
+    let mut bytes = Vec::with_capacity(capacity);
+    let mut file = File::from(descriptor);
+    Read::by_ref(&mut file)
+        .take(expected_size.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| AppDirError::Input(format!("read {label}: {error}")))?;
+    let after =
+        fstat(&file).map_err(|error| AppDirError::Input(format!("reinspect {label}: {error}")))?;
+    if bytes.len() != capacity
+        || after.st_dev != before.st_dev
+        || after.st_ino != before.st_ino
+        || after.st_size != before.st_size
+    {
+        return Err(AppDirError::Input(format!(
+            "{label} identity changed while reading"
+        )));
     }
     Ok(bytes)
 }

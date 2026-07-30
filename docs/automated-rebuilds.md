@@ -66,6 +66,13 @@ boundary tests, and receives the write token needed to open the pull request.
 The proprietary application is never executed in a job holding repository
 write authority.
 
+The locked Cargo build produces both `codex-linux-packager` and
+`codex-linux-updater`. Each deterministic AppDir consumes the same independently
+hashed updater executable and generates a release-specific schema-1 config
+bound to the compiled update key and manifest URL. Packaged launch tests set
+`CODEX_LINUX_DISABLE_UPDATES=1`; the required network-isolated runtime checks
+must not contact the release channel.
+
 The runner must provide:
 
 - stable Rust compatible with the repository MSRV and locked dependencies;
@@ -118,6 +125,7 @@ never replaces an earlier generation. It retains:
 - the downloaded authenticated source;
 - narrow stage, native build, runtime, and two AppDirs;
 - the twice-built verified AppImage;
+- the exact updater/config inventory embedded in both AppDirs;
 - all schema-1 phase evidence; and
 - the release-readiness assessment.
 

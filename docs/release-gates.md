@@ -40,8 +40,10 @@ of publisher rights.
 - **Complete notices and deterministic SBOM:** the tooling dependency policy is
   documented, but complete notices and an artifact-bound SBOM for the
   proprietary payload and every redistributed component are not complete.
-- **Signed checksums and protected keys:** no reviewed protected signing
-  operation or signed checksum set exists.
+- **Signed checksums and protected keys:** the Rust command can now generate a
+  private seed, reconcile AppImage provenance, sign a canonical full-file
+  checksum manifest, and self-verify it against the compiled pin. No reviewed
+  protected environment/key-custody operation is yet bound to a candidate.
 - **Signed attestation:** no signed attestation binds an exact commit, tree,
   Cargo.lock, inputs, and output digest set.
 - **Protected automation:** hourly monitoring and a dispatch-only trusted-runner
@@ -51,8 +53,10 @@ of publisher rights.
 - **Complete platform matrix:** host Wayland/X11 extract-and-run and a
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.
-- **Rollback and recovery:** the intended publication system has no reviewed
-  rollback/recovery exercise.
+- **Rollback and recovery:** runtime AppImage activation has synthetic
+  atomic-exchange, rollback-retention, collision, and symlink tests. The
+  intended GitHub publication system still has no reviewed rollback/recovery
+  exercise.
 - **Frozen independent review:** no independent approval is bound to the exact
   candidate source and artifact bytes.
 
@@ -62,8 +66,9 @@ review/signing workflow before a future implementation may clear it; adding a
 boolean CLI flag would not be adequate.
 
 The automatic rebuild workflow is intentionally not release automation. It
-retains the AppImage locally and opens only a digest-record pull request.
-Enabling it does not satisfy the protected-automation gate.
+builds and inventories the updater, retains the AppImage locally, and opens
+only a digest-record pull request. Enabling it does not satisfy the
+protected-automation gate or authorize use of the signing seed.
 
 ## Review discipline
 

@@ -3,6 +3,7 @@
 use std::fs;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::path::Path;
+use std::process::Command;
 
 use codex_linux_packager::appdir::{AppDirRequest, build_appdir};
 use codex_linux_packager::manifest::{PRODUCER_IDENTIFIER, SCHEMA_VERSION, to_json_line};
@@ -16,12 +17,19 @@ fn appdir_is_deterministic_renames_electron_and_preserves_sandboxing() {
     let temporary = tempfile::tempdir().expect("temporary directory");
     let runtime = temporary.path().join("runtime");
     let runtime_manifest_sha256 = synthetic_runtime(&runtime);
+    let updater = temporary.path().join("codex-linux-updater");
+    let updater_bytes = minimal_elf();
+    fs::write(&updater, &updater_bytes).expect("synthetic updater");
+    fs::set_permissions(&updater, fs::Permissions::from_mode(0o755)).expect("updater mode");
+    let updater_sha256 = digest(&updater_bytes);
     let first = temporary.path().join("first.AppDir");
     let second = temporary.path().join("second.AppDir");
 
     let first_manifest = build_appdir(&AppDirRequest {
         runtime: runtime.clone(),
         runtime_manifest_sha256: runtime_manifest_sha256.clone(),
+        updater: updater.clone(),
+        updater_sha256: updater_sha256.clone(),
         output: first.clone(),
         source_date_epoch: EPOCH,
     })
@@ -29,6 +37,8 @@ fn appdir_is_deterministic_renames_electron_and_preserves_sandboxing() {
     let second_manifest = build_appdir(&AppDirRequest {
         runtime,
         runtime_manifest_sha256,
+        updater,
+        updater_sha256,
         output: second.clone(),
         source_date_epoch: EPOCH,
     })
@@ -46,11 +56,34 @@ fn appdir_is_deterministic_renames_electron_and_preserves_sandboxing() {
         fs::read(first.join("codex-linux-packager.svg")).expect("generic icon")
     );
     let launcher = fs::read_to_string(first.join("AppRun")).expect("launcher");
+    let syntax = Command::new("/bin/sh")
+        .args(["-n"])
+        .arg(first.join("AppRun"))
+        .output()
+        .expect("validate AppRun syntax");
+    assert!(
+        syntax.status.success(),
+        "AppRun shell syntax failed: {}",
+        String::from_utf8_lossy(&syntax.stderr)
+    );
     assert!(!launcher.contains("--no-sandbox"));
     assert!(launcher.contains("--disable-setuid-sandbox"));
     assert!(launcher.contains("CODEX_LINUX_DISPLAY_BACKEND"));
     assert!(launcher.contains("--ozone-platform=wayland"));
     assert!(launcher.contains("--ozone-platform=x11"));
+    assert!(launcher.contains("CODEX_LINUX_DISABLE_UPDATES"));
+    assert!(launcher.contains("--codex-linux-update-now"));
+    assert!(launcher.contains("--current-appimage"));
+    assert!(
+        first
+            .join("usr/libexec/codex-linux-packager/codex-linux-updater")
+            .is_file()
+    );
+    let update_config =
+        fs::read_to_string(first.join("usr/share/codex-linux-packager/update-config.json"))
+            .expect("update config");
+    assert!(update_config.contains("\"application_version\":\"26.721.81911\""));
+    assert!(update_config.contains("\"application_build\":\"5973\""));
     for entry in &first_manifest.entries {
         let left = fs::read(first.join(&entry.path)).expect("first AppDir entry");
         let right = fs::read(second.join(&entry.path)).expect("second AppDir entry");
@@ -136,8 +169,8 @@ fn synthetic_runtime(root: &Path) -> String {
         kind: "linux_x86_64_runtime".to_owned(),
         publication_scope: "bytes_at_durable_commit_boundary_under_documented_threat_model"
             .to_owned(),
-        application_version: "synthetic-1".to_owned(),
-        application_build: "1".to_owned(),
+        application_version: "26.721.81911".to_owned(),
+        application_build: "5973".to_owned(),
         source_archive_sha256: "11".repeat(32),
         app_asar_sha256,
         native_manifest_sha256: "22".repeat(32),

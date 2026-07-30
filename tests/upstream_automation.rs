@@ -47,6 +47,8 @@ fn proprietary_rebuild_is_isolated_to_an_explicit_trusted_runner() {
         "build-native",
         "assemble-runtime",
         "build-appdir",
+        "PACKAGER_UPDATER",
+        "--updater-sha256",
         "pack-appimage",
         "release-readiness",
         "data/engineering-candidate.json",
