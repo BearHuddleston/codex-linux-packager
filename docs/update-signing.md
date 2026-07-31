@@ -95,9 +95,9 @@ under the private retained-output root.
 
 A separate `release-draft` job keeps `GITHUB_TOKEN` read-only and receives an
 environment-scoped, repository-limited release API credential but no signing
-seed or deploy key. It keylessly verifies the retained handoff, creates a
-public non-prerelease GitHub release marked latest, redownloads every asset,
-and keylessly verifies the downloaded set.
+seed or deploy key. It keylessly verifies the retained handoff, uploads a
+private draft, redownloads and keylessly verifies the complete set, and only
+then commits the draft as the public non-prerelease latest release.
 
 ## Operational requirements
 

@@ -209,9 +209,9 @@ protected seed and prepares exact signed evidence. A payload-free GitHub-hosted
 job then uses the scoped deploy key to create or verify the exact source tag.
 A separate signing-key-free `release-draft` job keeps its built-in workflow
 token read-only and receives a repository-limited release API credential. It
-attaches the public nonprerelease latest release to that tag, redownloads all
-ten assets, and verifies them again. The historical workflow/job name does not
-imply draft visibility.
+uploads all ten assets to a private draft, redownloads and verifies them, then
+commits that already-verified draft as the public nonprerelease latest release.
+The historical workflow/job name does not imply final draft visibility.
 
 ## Process and filesystem safety
 

@@ -361,7 +361,7 @@ jobs:
             --source-tree "${SOURCE_TREE}" \
             >"${RELEASE_ROOT}/draft-preflight-receipt.json"
 
-      - name: Create the protected public engineering release
+      - name: Create the private engineering release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -373,6 +373,17 @@ jobs:
             echo "release tag already exists; refusing replacement" >&2
             exit 1
           fi
+          tag_ref="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"
+          )"
+          jq -e \
+            --arg tag_ref "refs/tags/${RELEASE_TAG}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .ref == $tag_ref and
+              .object.type == "commit" and
+              .object.sha == $source_commit
+            ' <<<"${tag_ref}" >/dev/null
           notes="${RUNNER_TEMP}/automatic-release-notes-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.md"
           {
             printf '# Unofficial automatic Linux engineering release\n\n'
@@ -384,12 +395,43 @@ jobs:
             printf 'It is not a claim of stable support or OpenAI endorsement.\n\n'
             printf 'Source commit: `%s`\n' "${SOURCE_COMMIT}"
           } >"${notes}"
-          gh release create "${RELEASE_TAG}" \
+          release_request="$(
+            jq -n \
+              --arg tag "${RELEASE_TAG}" \
+              --arg target "${SOURCE_COMMIT}" \
+              --arg name \
+                "Codex Desktop Linux ${REQUESTED_VERSION}-${REQUESTED_BUILD} (unofficial)" \
+              --rawfile body "${notes}" \
+              '{
+                tag_name: $tag,
+                target_commitish: $target,
+                name: $name,
+                body: $body,
+                draft: true,
+                prerelease: false
+              }'
+          )"
+          release_json="$(
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/releases" \
+              --input - <<<"${release_request}"
+          )"
+          jq -e \
+            --arg tag "${RELEASE_TAG}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              (.id | type == "number") and
+              .tag_name == $tag and
+              .target_commitish == $source_commit and
+              .draft == true and
+              .prerelease == false and
+              (.assets | length) == 0
+            ' <<<"${release_json}" >/dev/null
+          RELEASE_ID="$(jq -r '.id' <<<"${release_json}")"
+          [[ "${RELEASE_ID}" =~ ^[0-9]+$ ]]
+          printf 'RELEASE_ID=%s\n' "${RELEASE_ID}" >>"${GITHUB_ENV}"
+          gh release upload "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --latest \
-            --target "${SOURCE_COMMIT}" \
-            --title "Codex Desktop Linux ${REQUESTED_VERSION}-${REQUESTED_BUILD} (unofficial)" \
-            --notes-file "${notes}" \
             "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
             "${CANDIDATE_ROOT}/appimage/provenance.json" \
             "${RELEASE_ROOT}/codex-linux-x86_64-update.json" \
@@ -400,8 +442,34 @@ jobs:
             "${RELEASE_ROOT}/evidence/codex-linux-x86_64.spdx.json" \
             "${RELEASE_ROOT}/evidence/release-attestation.json" \
             "${RELEASE_ROOT}/evidence/third-party-notices.json"
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}"
+          )"
+          jq -e \
+            --argjson release_id "${RELEASE_ID}" \
+            --arg tag "${RELEASE_TAG}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .id == $release_id and
+              .tag_name == $tag and
+              .target_commitish == $source_commit and
+              .draft == true and
+              .prerelease == false and
+              ((.assets | map(.name) | sort) == [
+                "Cargo.lock",
+                "SHA256SUMS",
+                "appdir-manifest.json",
+                "codex-desktop-unofficial-x86_64.AppImage",
+                "codex-linux-x86_64-update.json",
+                "codex-linux-x86_64.spdx.json",
+                "provenance.json",
+                "release-attestation.json",
+                "release-readiness.json",
+                "third-party-notices.json"
+              ])
+            ' <<<"${release_json}" >/dev/null
 
-      - name: Redownload and keylessly verify every public asset
+      - name: Redownload and keylessly verify every private asset
         env:
           GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -418,7 +486,7 @@ jobs:
               --repo "${GITHUB_REPOSITORY}" \
               --json isDraft,isPrerelease,assets \
               --jq '
-                (.isDraft == false) and
+                (.isDraft == true) and
                 (.isPrerelease == false) and
                 ((.assets | map(.name) | sort) == [
                   "Cargo.lock",
@@ -457,6 +525,11 @@ jobs:
             [[ -f "${download}/${downloaded_assets[index]}" ]]
             [[ ! -L "${download}/${downloaded_assets[index]}" ]]
           done
+          chmod 0755 -- "${download}/codex-desktop-unofficial-x86_64.AppImage"
+          [[ "$(
+            stat --format=%a \
+              "${download}/codex-desktop-unofficial-x86_64.AppImage"
+          )" == "755" ]]
           mkdir --mode=0755 -- "${evidence}"
           for name in \
             SHA256SUMS \
@@ -477,10 +550,83 @@ jobs:
             --source-commit "${SOURCE_COMMIT}" \
             --source-tree "${SOURCE_TREE}" \
             >"${RELEASE_ROOT}/draft-redownload-verification.json"
+
+      - name: Publish the verified engineering release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          gh release edit "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft=false \
+            --latest
+          published_release="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json databaseId,tagName,targetCommitish,isDraft,isPrerelease,assets
+          )"
+          jq -e \
+            --argjson release_id "${RELEASE_ID}" \
+            --arg tag "${RELEASE_TAG}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .databaseId == $release_id and
+              .tagName == $tag and
+              .targetCommitish == $source_commit and
+              .isDraft == false and
+              .isPrerelease == false and
+              ((.assets | map(.name) | sort) == [
+                "Cargo.lock",
+                "SHA256SUMS",
+                "appdir-manifest.json",
+                "codex-desktop-unofficial-x86_64.AppImage",
+                "codex-linux-x86_64-update.json",
+                "codex-linux-x86_64.spdx.json",
+                "provenance.json",
+                "release-attestation.json",
+                "release-readiness.json",
+                "third-party-notices.json"
+              ])
+            ' <<<"${published_release}" >/dev/null
           {
             printf '### Public automatic engineering release verification\n\n'
             printf -- '- Release tag: `%s`\n' "${RELEASE_TAG}"
             printf -- '- Redownloaded asset verification: `passed`\n'
             printf -- '- Public visibility: `public latest release`\n'
             printf -- '- Stable support claim: `not made`\n'
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove the exact uncommitted private release on failure
+        if: ${{ failure() && env.RELEASE_ID != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_ID}" =~ ^[0-9]+$ ]]
+          release_json="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}"
+          )"
+          if ! jq -e \
+            --argjson release_id "${RELEASE_ID}" \
+            --arg tag "${RELEASE_TAG}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .id == $release_id and
+              .tag_name == $tag and
+              .target_commitish == $source_commit and
+              .draft == true and
+              .prerelease == false
+            ' <<<"${release_json}" >/dev/null
+          then
+            echo "release reached its public commit boundary; refusing cleanup" >&2
+            exit 0
+          fi
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}"
+          {
+            printf '### Failed private release cleanup\n\n'
+            printf -- '- Release id: `%s`\n' "${RELEASE_ID}"
+            printf -- '- Public release deleted: `no`\n'
+            printf -- '- Source tag deleted: `no`\n'
           } >>"${GITHUB_STEP_SUMMARY}"

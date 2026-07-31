@@ -129,7 +129,14 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "needs: [sign, tag]",
         "needs: sign",
         "GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}",
-        "gh release create",
+        "gh api --method POST",
+        "gh release upload \"${RELEASE_TAG}\"",
+        "draft: true",
+        "chmod 0755 -- \"${download}/codex-desktop-unofficial-x86_64.AppImage\"",
+        "gh release edit \"${RELEASE_TAG}\"",
+        "--draft=false",
+        "if: ${{ failure() && env.RELEASE_ID != '' }}",
+        "gh api --method DELETE \"repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}\"",
         "--latest",
         "codex-desktop-unofficial-x86_64.AppImage",
         "codex-linux-x86_64-update.json",
@@ -148,6 +155,7 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "sha256sum \"${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage\"",
         "stat --format=%s \"${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage\"",
         "--json isDraft,isPrerelease,assets",
+        ".isDraft == true",
         ".isDraft == false",
         ".isPrerelease == false",
         "map(.name) | sort",
@@ -165,7 +173,6 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "schedule:",
         "actions/upload-artifact",
         "actions/download-artifact",
-        "--draft",
         "--prerelease",
         "--slurpfile candidate data/engineering-candidate.json",
     ] {
@@ -226,12 +233,29 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         workflow
             .matches("GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}")
             .count(),
-        2,
-        "release creation and redownload inspection must use the scoped credential"
+        4,
+        "private creation, verification, publication, and cleanup must use the scoped credential"
     );
     assert!(
         !workflow[draft_job..].contains("GH_TOKEN: ${{ github.token }}"),
         "publication must not fall back to the rejected workflow token"
+    );
+
+    let create_draft = workflow[draft_job..]
+        .find("- name: Create the private engineering release")
+        .expect("release assets must first be staged privately");
+    let verify_download = workflow[draft_job..]
+        .find("- name: Redownload and keylessly verify every private asset")
+        .expect("private assets must be redownloaded and verified");
+    let publish = workflow[draft_job..]
+        .find("- name: Publish the verified engineering release")
+        .expect("verified draft must have an explicit publication commit");
+    let cleanup = workflow[draft_job..]
+        .find("- name: Remove the exact uncommitted private release on failure")
+        .expect("ordinary precommit failures must clean up their private release");
+    assert!(
+        create_draft < verify_download && verify_download < publish && publish < cleanup,
+        "release creation must stage, verify, publish, then provide guarded cleanup"
     );
 }
 

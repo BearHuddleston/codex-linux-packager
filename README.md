@@ -122,8 +122,8 @@ check-upstream
                                       digest-only record committed to Git
                                                     │
                                                     ▼
-                                      protected signing, public release,
-                                      redownload, and keyless verification
+                                      protected signing, private redownload,
+                                      keyless verification, public commit
 ```
 
 Routine upstream changes are automatic only while the authenticated
