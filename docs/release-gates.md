@@ -1,20 +1,25 @@
 # Release gates
 
-Canonical tests and a verified local AppImage are engineering evidence, not
-release approval. No public binary or stable AppImage may be published until
-every applicable gate is explicitly cleared for one exact source commit/tree
-and artifact digest set. The publisher remains responsible for determining
-whether it has permission to redistribute payloads and use relevant names or
-marks; those legal decisions are deliberately outside the machine gate
-catalog.
+Canonical tests and a verified local AppImage are engineering evidence, not a
+claim of stable support. The repository has two deliberately different
+publication dispositions:
+
+- the **automatic engineering channel** may publish a public AppImage only
+  after the seven implemented artifact, ABI, reproducibility, ELF, and genuine
+  launch gates pass; and
+- a future **stable channel** remains blocked until every broader operational
+  gate is independently cleared for one exact commit/tree and digest set.
+
+The publisher remains responsible for payload and mark permissions. Those
+legal decisions are deliberately outside the machine gate catalog.
 
 `release-readiness` produces the authoritative schema-1 assessment shape. It
 re-authenticates and validates the supplied engineering evidence but does not
 make legal determinations or accept self-asserted operational approvals. Its
-`stable_publication_permitted` field describes only the cataloged technical
-and operational gates; it is not a legal opinion. A successful assessment
-command can therefore still—and currently must—report
-`stable_publication_permitted: false`.
+`automatic_publication_permitted` becomes true only for an exact evidence set
+that passes all seven implemented engineering gates.
+`stable_publication_permitted` describes the complete cataloged technical and
+operational set and therefore remains false. Neither field is a legal opinion.
 
 ## Engineering gates implemented by the assessment
 
@@ -31,9 +36,10 @@ For one exact evidence set, the command can establish:
 - a genuine non-root launch passed in the digest-pinned controlled
   Debian/glibc-2.36 baseline with networking disabled.
 
-Changing any reviewed bytes requires a new assessment. These gates do not imply
-desktop-environment coverage, signing, release operations, or a determination
-of publisher rights.
+Changing any reviewed bytes requires a new assessment. Passing these gates
+permits only the explicitly labeled automatic engineering channel. It does not
+imply complete desktop-environment coverage, stable approval, or a
+determination of publisher rights.
 
 ## Release evidence implemented after assessment
 
@@ -64,8 +70,8 @@ public-key pin, rehashes every external asset, reconstructs the complete
 checksum and subject sets, and rejects noncanonical, extra, missing, or
 conflicting evidence.
 
-These commands establish deterministic evidence mechanics. The generated notice
-document deliberately says
+These commands establish deterministic evidence mechanics used before every
+automatic publication. The generated notice document deliberately says
 `generated_inventory_requires_independent_license_review`: an inventory is not
 a publisher's legal review, protected key operation, independent approval, or
 publication authorization.
@@ -76,18 +82,18 @@ publication authorization.
   inventories are implemented and locally reproducible, but their
   `NOASSERTION` file conclusions and embedded-notice inventory still require
   independent completion and review for every redistributed component.
-- **Signed checksums and protected keys:** exact checksum construction,
-  pinned-key signing, and keyless verification are implemented. No reviewed
-  protected environment, custody/recovery procedure, or approved signing run
-  is yet bound to the frozen candidate.
-- **Signed attestation:** the canonical exact-commit/tree/lockfile/asset
-  attestation is implemented and locally verified, but no protected signing
-  run plus independent approval is bound to the frozen candidate.
-- **Protected automation:** hourly monitoring, dispatch-only candidate rebuild,
-  and manual draft-release workflows are implemented. No reviewed runner
-  registration, protected environment/reviewer policy, pinned Cargo-license
-  tool configuration, tag policy, or successful protected draft exercise is
-  yet bound to the candidate.
+- **Signed checksums and protected keys:** every automatic release uses exact
+  checksum construction, a scoped signing environment, pinned-key signing, and
+  keyless verification. A stable line would additionally require independently
+  reviewed custody and recovery policy.
+- **Signed attestation:** each automatic release carries the canonical
+  exact-commit/tree/lockfile/asset attestation. Stable approval still requires
+  independent review bound to one frozen set.
+- **Protected automation:** hourly monitoring, compatibility-bounded contract
+  refresh, trusted rebuild, scoped signing, public release, and redownload
+  verification are implemented. The automatic chain deliberately has no human
+  approval pause; a stable channel would require a separately reviewed
+  protection and recovery policy.
 - **Complete platform matrix:** host Wayland/X11 extract-and-run and a
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.
@@ -103,11 +109,10 @@ The machine-readable gate identifiers and required actions are defined in
 reviewed protected workflow and an exact frozen candidate; adding a boolean CLI
 flag would not be adequate.
 
-The automatic rebuild workflow is intentionally not publication automation. It
-builds and inventories the updater, retains the AppImage locally, and opens
-only a digest-record pull request. The separate release workflow can create
-only a non-public draft. Enabling either workflow does not satisfy the
-protected-automation gate or authorize a public release.
+The automatic pipeline commits only digest state, then signs and publishes the
+exact retained AppImage as a public latest engineering release. It never
+changes `stable_publication_permitted` or promotes the artifact to a stable
+support claim.
 
 ## Review discipline
 

@@ -872,7 +872,7 @@ fn validate_request_paths(request: &NativeBuildRequest) -> Result<(), NativeErro
     Ok(())
 }
 
-fn validate_stage_package_contracts(
+pub(crate) fn validate_stage_package_contracts(
     stage: &ValidatedStage,
     contract: &NativeContract,
 ) -> Result<(), NativeError> {
@@ -890,8 +890,12 @@ fn validate_stage_package_contracts(
     let development = root.development_dependencies.ok_or_else(|| {
         NativeError::Contract("root application devDependencies are absent".to_owned())
     })?;
-    if dependencies.get("better-sqlite3").map(String::as_str) != Some("^12.9.0")
-        || dependencies.get("node-pty").map(String::as_str) != Some("^1.1.0")
+    let dependencies_match = contract.packages.iter().all(|package| {
+        dependencies.get(&package.name).is_some_and(|declared| {
+            declared == &package.version || declared == &format!("^{}", package.version)
+        })
+    });
+    if !dependencies_match
         || development.get("electron").map(String::as_str)
             != Some(contract.electron.version.as_str())
     {

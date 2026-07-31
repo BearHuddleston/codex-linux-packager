@@ -36,7 +36,7 @@ const SIGNED_RELEASE_ATTESTATION_KIND: &str = "linux_x86_64_signed_release_attes
 const RELEASE_PREDICATE_TYPE: &str =
     "https://github.com/BearHuddleston/codex-linux-packager/attestation/v1";
 const RELEASE_EVIDENCE_STATUS: &str =
-    "release_evidence_prepared_operational_review_and_publication_not_implied";
+    "release_evidence_prepared_for_automatic_engineering_publication_not_stable_approval";
 const MAX_ATTESTATION_BYTES: usize = 1024 * 1024;
 const MAX_SMALL_RELEASE_ASSET_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_APPDIR_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
@@ -412,7 +412,7 @@ pub struct ReleaseAttestationPayload {
     pub subjects: Vec<ReleaseSubject>,
     /// Exact supporting evidence digests.
     pub evidence: ReleaseAttestationEvidence,
-    /// Truthful non-publication disposition.
+    /// Truthful automatic-engineering publication disposition.
     pub publication_status: String,
 }
 
@@ -495,7 +495,7 @@ pub struct ReleaseEvidenceVerification {
     pub artifact_sha256: String,
     /// Complete sorted evidence-file identities.
     pub files: Vec<ReleaseSubject>,
-    /// Truthful non-publication disposition.
+    /// Truthful automatic-engineering verification disposition.
     pub verification_status: &'static str,
 }
 
@@ -926,7 +926,7 @@ pub fn build_release_materials(
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: RELEASE_ATTESTATION_PAYLOAD_KIND.to_owned(),
         predicate_type: RELEASE_PREDICATE_TYPE.to_owned(),
-        channel: "stable".to_owned(),
+        channel: "automatic".to_owned(),
         target: "linux-x86_64".to_owned(),
         release_repository: "BearHuddleston/codex-linux-packager".to_owned(),
         release_tag: format!(
@@ -1477,7 +1477,7 @@ pub fn verify_release_evidence(
         source_tree: payload.source_tree.clone(),
         artifact_sha256: appimage.sha256,
         files,
-        verification_status: "signed_release_evidence_verified_operational_gates_and_publication_not_implied",
+        verification_status: "signed_release_evidence_verified_for_automatic_engineering_publication_not_stable_approval",
     })
 }
 
@@ -1836,8 +1836,10 @@ fn validate_preparation_readiness(
         || report.publication_scope
             != "bytes_at_durable_commit_boundary_under_documented_threat_model"
         || !report.engineering_candidate
+        || !report.automatic_publication_permitted
         || report.stable_publication_permitted
-        || report.release_status != "not_release_approved_do_not_publish"
+        || report.release_status
+            != "automatic_engineering_publication_permitted_not_stable_approval"
         || report.assessment_scope.appdir_manifest_sha256 != appdir_sha256
         || report.assessment_scope.appimage_provenance_sha256 != provenance_sha256
         || report.assessment_scope.artifact_sha256 != appimage.sha256
@@ -2210,7 +2212,7 @@ fn validate_release_contract(contract: &UpdateContract) -> Result<[u8; 32], Rele
     if contract.schema != SCHEMA_VERSION
         || contract.producer != PRODUCER_IDENTIFIER
         || contract.kind != "linux_x86_64_update_contract"
-        || contract.channel != "stable"
+        || contract.channel != "automatic"
         || contract.target != "linux-x86_64"
         || contract.release_repository != "BearHuddleston/codex-linux-packager"
         || contract.artifact_name != "codex-desktop-unofficial-x86_64.AppImage"
@@ -2350,7 +2352,7 @@ fn validate_attestation_payload(
                 "attestation payload differs from the release contract".to_owned(),
             ));
         }
-    } else if payload.channel != "stable"
+    } else if payload.channel != "automatic"
         || payload.target != "linux-x86_64"
         || payload.release_repository != "BearHuddleston/codex-linux-packager"
     {

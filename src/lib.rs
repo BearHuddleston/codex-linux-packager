@@ -7,6 +7,7 @@ pub mod appimage;
 pub mod archive;
 pub mod asar;
 pub mod cli;
+pub mod contract_refresh;
 pub mod download;
 pub mod error;
 pub mod extract;

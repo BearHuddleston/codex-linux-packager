@@ -18,7 +18,7 @@ fn fixture() -> (UpdateContract, UpdatePayload, SigningKey) {
         schema: SCHEMA_VERSION,
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: "linux_x86_64_update_contract".to_owned(),
-        channel: "stable".to_owned(),
+        channel: "automatic".to_owned(),
         target: "linux-x86_64".to_owned(),
         manifest_url:
             "https://github.com/BearHuddleston/codex-linux-packager/releases/latest/download/codex-linux-x86_64-update.json"
@@ -34,7 +34,7 @@ fn fixture() -> (UpdateContract, UpdatePayload, SigningKey) {
         schema: SCHEMA_VERSION,
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: "linux_x86_64_update_payload".to_owned(),
-        channel: "stable".to_owned(),
+        channel: "automatic".to_owned(),
         target: "linux-x86_64".to_owned(),
         release_tag: "codex-app-26.801.10001-6001".to_owned(),
         application_version: "26.801.10001".to_owned(),

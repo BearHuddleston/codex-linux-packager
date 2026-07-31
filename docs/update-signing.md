@@ -13,7 +13,7 @@ Generated locally on 2026-07-30 with the repository's
 algorithm:          Ed25519 / RFC 8032
 raw public key:     PW6jUTIc/Z46q/T3D3YisXqPVVHWIdknf/GQHzJRf4E=
 SHA-256 fingerprint: fd6ea6bd85ff0f85fc7f45190c505317491a59fbfd872686e2debbe41e868314
-channel:            stable
+channel:            automatic
 target:             linux-x86_64
 ```
 
@@ -23,8 +23,8 @@ file and its parent, and emitted only the public identity. The raw seed is not
 part of Git and must never appear in logs, command arguments, artifacts,
 fixtures, or pull requests.
 
-This record establishes the source-tree pin. It does not by itself establish
-protected key custody, recovery, reviewer separation, or release approval.
+This record establishes the source-tree pin. The private seed is scoped to the
+read-only `release-signing` job; the keyless GitHub release job cannot read it.
 
 ## Manifest contract
 
@@ -84,34 +84,39 @@ observed by the pinned policy tool, leaves SPDX conclusions as `NOASSERTION`,
 and retains the explicit status
 `generated_inventory_requires_independent_license_review`.
 
-## Protected draft workflow
+## Protected automatic-release workflow
 
-`.github/workflows/release-draft.yml` is manual and draft-only. Its signing job
-has read-only repository permission, receives the protected seed through the
-`release-signing` environment, verifies that the retained generation matches
-the merged `engineering-candidate.json` digest set, and stores signed evidence
+`.github/workflows/release-draft.yml` retains its historical filename but is
+dispatched automatically after a successful fresh candidate record. Its
+signing job has read-only repository permission, receives the protected seed
+through the `release-signing` environment, verifies that the retained
+generation matches `engineering-candidate.json`, and stores signed evidence
 under the private retained-output root.
 
 A separate `release-draft` job has repository write permission but receives no
-signing seed. It keylessly verifies the retained handoff, creates a non-public
-GitHub draft, redownloads every asset, and keylessly verifies the downloaded
-set. The workflow contains no public-release promotion step.
+signing seed. It keylessly verifies the retained handoff, creates a public
+non-prerelease GitHub release marked latest, redownloads every asset, and
+keylessly verifies the downloaded set.
 
 ## Operational requirements
 
-Before first publication:
+For automatic publication:
 
 1. import the raw seed into a protected release environment without printing
    it;
 2. establish backup and recovery appropriate to the publisher;
-3. require reviewer approval for that environment;
-4. prevent pull-request jobs and proprietary application processes from
+3. keep the signing environment free of repository write authority;
+4. prevent pull-request jobs and unrelated proprietary application processes from
    receiving the seed;
 5. bind the signing receipt, release attestation, and all release assets to one
    exact reviewed commit/tree and merged candidate digest set;
 6. verify the public key and fingerprint independently after import; and
-7. exercise draft creation, redownload verification, publication rollback, and
+7. exercise release creation, redownload verification, publication rollback, and
    key recovery without deleting or replacing unrelated assets.
+
+Required-reviewer pauses are intentionally absent from the automatic
+engineering channel. They may be added for a separately defined stable channel
+without combining signing and repository-write authority.
 
 Loss of the seed stops updates for installed images carrying this pin.
 Suspected disclosure requires halting publication. A replacement key cannot be

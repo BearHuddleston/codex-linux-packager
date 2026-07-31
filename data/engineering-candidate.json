@@ -18,6 +18,7 @@
     "cargo_lock_sha256": "a34c67940cc365edb6af3e184fad0f1f62483159063edeba1ad14aa2a263f67c"
   },
   "engineering_candidate": true,
+  "automatic_publication_permitted": false,
   "stable_publication_permitted": false,
   "release_status": "not_release_approved_do_not_publish"
 }

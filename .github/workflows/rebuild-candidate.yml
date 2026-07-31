@@ -11,12 +11,19 @@ on:
         description: Exact reviewed Codex application build
         required: true
         type: string
+      reason:
+        description: Guarded reason for this fresh rebuild
+        required: true
+        type: choice
+        options:
+          - stale_candidate
+          - missing_release
 
 permissions:
   contents: read
 
 concurrency:
-  group: trusted-codex-rebuild
+  group: codex-automatic-release-pipeline
   cancel-in-progress: false
 
 env:
@@ -41,6 +48,7 @@ jobs:
     outputs:
       candidate_record: ${{ steps.candidate.outputs.record }}
       source_commit: ${{ steps.candidate.outputs.source_commit }}
+      candidate_generation: ${{ steps.candidate.outputs.candidate_generation }}
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -52,8 +60,10 @@ jobs:
           REQUESTED_VERSION: ${{ inputs.version }}
           REQUESTED_BUILD: ${{ inputs.build }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AUTOMATIC_RELEASE_ENABLED: ${{ vars.AUTOMATIC_RELEASE_ENABLED }}
         run: |
           set -euo pipefail
+          [[ "${AUTOMATIC_RELEASE_ENABLED}" == "true" ]]
           [[ "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" ]]
           [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
           [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
@@ -120,15 +130,21 @@ jobs:
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
           REQUESTED_BUILD: ${{ inputs.build }}
+          REBUILD_REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
           "${PACKAGER_BIN}" check-upstream >"${PACKAGER_GENERATION}/evidence/upstream-status.json"
           jq -e \
             --arg version "${REQUESTED_VERSION}" \
             --arg build "${REQUESTED_BUILD}" \
+            --arg reason "${REBUILD_REASON}" \
             '
-              .action == "rebuild_candidate" and
-              .automatic_rebuild_permitted == true and
+              (($reason == "stale_candidate" and
+                .action == "rebuild_candidate" and
+                .automatic_rebuild_permitted == true) or
+               ($reason == "missing_release" and
+                .action == "current" and
+                .candidate_rebuild_required == false)) and
               .contract_update_required == false and
               .latest_release.version == $version and
               .latest_release.build == $build and
@@ -294,8 +310,9 @@ jobs:
             >"${PACKAGER_GENERATION}/evidence/release-readiness.json"
           jq -e '
             .engineering_candidate == true and
+            .automatic_publication_permitted == true and
             .stable_publication_permitted == false and
-            .release_status == "not_release_approved_do_not_publish"
+            .release_status == "automatic_engineering_publication_permitted_not_stable_approval"
           ' "${PACKAGER_GENERATION}/evidence/release-readiness.json" >/dev/null
 
       - name: Prepare the digest-only candidate record
@@ -324,12 +341,14 @@ jobs:
               },
               assessment_scope: $readiness[0].assessment_scope,
               engineering_candidate: $readiness[0].engineering_candidate,
+              automatic_publication_permitted: $readiness[0].automatic_publication_permitted,
               stable_publication_permitted: $readiness[0].stable_publication_permitted,
               release_status: $readiness[0].release_status
             }' >"${candidate}"
           {
             printf 'record=%s\n' "$(base64 --wrap=0 "${candidate}")"
             printf 'source_commit=%s\n' "${GITHUB_SHA}"
+            printf 'candidate_generation=%s\n' "${PACKAGER_GENERATION##*/}"
           } >>"${GITHUB_OUTPUT}"
 
       - name: Record retained local output
@@ -345,23 +364,26 @@ jobs:
             printf -- '- Local generation: `%s`\n' \
               "${PACKAGER_GENERATION:-not-allocated}"
             printf -- '- GitHub payload upload: `none`\n'
+            printf -- '- Automatic engineering publication: `permitted after signed evidence verification`\n'
             printf -- '- Stable publication: `not permitted`\n'
           } >>"${GITHUB_STEP_SUMMARY}"
 
   record:
-    name: Propose the digest-only candidate record
+    name: Commit the digest-only record and dispatch release
     needs: rebuild
     runs-on: ubuntu-24.04
+    environment: automation-commit
     timeout-minutes: 15
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      actions: write
+      contents: read
     steps:
       - name: Check out the default branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: true
+          ssh-key: ${{ secrets.AUTOMATION_DEPLOY_KEY }}
 
       - name: Install stable Rust
         run: |
@@ -376,6 +398,7 @@ jobs:
           REQUESTED_BUILD: ${{ inputs.build }}
         run: |
           set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${SOURCE_COMMIT}" ]]
           printf '%s' "${CANDIDATE_RECORD}" |
             base64 --decode >data/engineering-candidate.json
           jq -e \
@@ -390,44 +413,32 @@ jobs:
               .application.version == $version and
               .application.build == $build and
               .engineering_candidate == true and
+              .automatic_publication_permitted == true and
               .stable_publication_permitted == false and
-              .release_status == "not_release_approved_do_not_publish"
+              .release_status == "automatic_engineering_publication_permitted_not_stable_approval"
             ' data/engineering-candidate.json >/dev/null
           cargo test --locked --test upstream_monitor --test repository_boundary
+          [[ "$(git diff --name-only)" == "data/engineering-candidate.json" ]]
 
-      - name: Open a reviewable digest-record pull request
+      - name: Commit directly and dispatch protected release preparation
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.version }}
           REQUESTED_BUILD: ${{ inputs.build }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_COMMIT: ${{ needs.rebuild.outputs.source_commit }}
+          CANDIDATE_GENERATION: ${{ needs.rebuild.outputs.candidate_generation }}
         run: |
           set -euo pipefail
-          gh label create engineering-candidate \
-            --repo "${GITHUB_REPOSITORY}" \
-            --color 1d76db \
-            --description "Digest-only record produced by the isolated engineering rebuild" \
-            --force
-          branch="automation/candidate-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch --create "${branch}"
           git add -- data/engineering-candidate.json
           git commit -m "chore: record Codex ${REQUESTED_VERSION} engineering candidate"
-          git push origin "HEAD:refs/heads/${branch}"
-          body_file="${RUNNER_TEMP}/candidate-pr.md"
-          {
-            printf 'Records the digest-only result of trusted rebuild run `%s`.\n\n' \
-              "${GITHUB_RUN_ID}"
-            printf '%s\n' \
-              'The AppImage and proprietary inputs remain only in the configured trusted-runner output root and were not uploaded to GitHub.'
-            printf '\n%s\n' \
-              'This record is an engineering candidate only. `stable_publication_permitted` remains false and no release was created.'
-          } >"${body_file}"
-          gh pr create \
+          git push origin HEAD:refs/heads/"${DEFAULT_BRANCH}"
+          gh workflow run release-draft.yml \
             --repo "${GITHUB_REPOSITORY}" \
-            --base "${DEFAULT_BRANCH}" \
-            --head "${branch}" \
-            --title "chore: record Codex ${REQUESTED_VERSION} build ${REQUESTED_BUILD}" \
-            --body-file "${body_file}" \
-            --label engineering-candidate
+            --ref "${DEFAULT_BRANCH}" \
+            --field "version=${REQUESTED_VERSION}" \
+            --field "build=${REQUESTED_BUILD}" \
+            --field "source_commit=${SOURCE_COMMIT}" \
+            --field "candidate_generation=${CANDIDATE_GENERATION}"

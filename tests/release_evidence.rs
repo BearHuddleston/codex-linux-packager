@@ -576,10 +576,12 @@ fn complete_synthetic_chain_prepares_one_reconciled_release_evidence_generation(
             cargo_lock_sha256,
         },
         engineering_candidate: true,
+        automatic_publication_permitted: true,
         stable_publication_permitted: false,
         gates,
         blocking_gate_ids,
-        release_status: "not_release_approved_do_not_publish".to_owned(),
+        release_status: "automatic_engineering_publication_permitted_not_stable_approval"
+            .to_owned(),
     };
     let readiness_path = root.join("release-readiness.json");
     write_canonical(&readiness_path, &readiness);
@@ -627,7 +629,7 @@ fn complete_synthetic_chain_prepares_one_reconciled_release_evidence_generation(
     .expect("keyless verification");
     assert_eq!(
         verification.verification_status,
-        "signed_release_evidence_verified_operational_gates_and_publication_not_implied"
+        "signed_release_evidence_verified_for_automatic_engineering_publication_not_stable_approval"
     );
 
     let mut forged_readiness = readiness.clone();
@@ -810,7 +812,7 @@ fn synthetic_attestation_payload() -> ReleaseAttestationPayload {
         kind: "linux_x86_64_release_attestation_payload".to_owned(),
         predicate_type: "https://github.com/BearHuddleston/codex-linux-packager/attestation/v1"
             .to_owned(),
-        channel: "stable".to_owned(),
+        channel: "automatic".to_owned(),
         target: "linux-x86_64".to_owned(),
         release_repository: "BearHuddleston/codex-linux-packager".to_owned(),
         release_tag: "codex-app-26.721.81911-5973".to_owned(),
@@ -831,7 +833,8 @@ fn synthetic_attestation_payload() -> ReleaseAttestationPayload {
             checksums_sha256: "16".repeat(32),
         },
         publication_status:
-            "release_evidence_prepared_operational_review_and_publication_not_implied".to_owned(),
+            "release_evidence_prepared_for_automatic_engineering_publication_not_stable_approval"
+                .to_owned(),
     }
 }
 
@@ -841,7 +844,7 @@ fn synthetic_update_contract(signing_key: &SigningKey) -> UpdateContract {
         schema: SCHEMA_VERSION,
         producer: PRODUCER_IDENTIFIER.to_owned(),
         kind: "linux_x86_64_update_contract".to_owned(),
-        channel: "stable".to_owned(),
+        channel: "automatic".to_owned(),
         target: "linux-x86_64".to_owned(),
         manifest_url:
             "https://github.com/BearHuddleston/codex-linux-packager/releases/latest/download/codex-linux-x86_64-update.json"

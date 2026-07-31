@@ -28,6 +28,8 @@ fn help_exposes_every_planned_command_concept() {
     for command in [
         "inspect",
         "check-upstream",
+        "inspect-contract-source",
+        "refresh-runtime-contract",
         "acquire-artifact",
         "inspect-artifact",
         "stage",

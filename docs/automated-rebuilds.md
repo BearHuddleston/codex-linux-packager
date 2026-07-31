@@ -1,105 +1,222 @@
-# Automated rebuilds
+# Automatic releases
 
-The repository separates public upstream detection from proprietary artifact
-handling. This keeps the hourly job safe to run on GitHub-hosted infrastructure
-without pretending that a changed feed can authorize its own supply-chain
-contracts.
+The repository separates public monitoring, proprietary source handling,
+digest-state writes, protected signing, and GitHub release writes. A single job
+never receives both the update-signing seed and repository write authority.
+
+The automatic channel publishes only Linux x86_64 engineering releases. It
+does not claim stable support or OpenAI affiliation.
 
 ## State machine
 
-`check-upstream` compares three identities:
+`check-upstream` compares:
 
 - the first authoritative release in the bounded official Sparkle feed;
-- the application version/build in `data/runtime-contract.json`; and
-- the last digest-bound local result in `data/engineering-candidate.json`.
+- the authenticated application identity in `data/runtime-contract.json`; and
+- the last digest-bound result in `data/engineering-candidate.json`.
 
-It emits exactly one action:
+It emits:
 
-| Action | Meaning | Permitted automation |
+| Action | Meaning | Automatic transition |
 | --- | --- | --- |
-| `current` | Feed, reviewed contract, and candidate agree | None |
-| `review_contract_update` | Feed is newer than the reviewed contract | Open/update an issue; do not rebuild |
-| `rebuild_candidate` | Contract matches the feed and candidate is stale | Dispatch the isolated trusted rebuild |
+| `current` | Feed, contract, and candidate identities agree | Do nothing when the matching public release exists; otherwise rebuild from fresh roots with reason `missing_release` |
+| `review_contract_update` | Feed identity differs from the contract | Dispatch compatibility-bounded `refresh-contract.yml` |
+| `rebuild_candidate` | Contract matches the feed and candidate is stale | Dispatch a fresh trusted rebuild with reason `stale_candidate` |
 
-A feed update never changes Electron, native-package, Codex CLI, ripgrep,
-patch, runtime, or packaging-tool pins by itself. Those inputs must be
-authenticated or independently obtained, reconciled, and reviewed before the
-contract update is merged.
+The monitor checks for the exact public tag
+`codex-app-<version>-<build>`. A candidate record is never treated as a
+substitute for a public release. Missing publication therefore triggers a
+genuine rebuild rather than reusing or merely rehashing an old AppImage.
 
-## Public monitor
+`AUTOMATIC_RELEASE_ENABLED=true` enables dispatch. The switch should remain
+false while provisioning or modifying the runner, signing environment, or
+workflow chain.
 
-`.github/workflows/upstream-monitor.yml` runs at minute 17 of every hour and on
-manual dispatch. It:
+## Hourly public monitor
 
-1. checks out the exact default-branch source;
-2. runs `cargo run --locked -- check-upstream`;
-3. validates the schema-1 result;
-4. creates or refreshes one `upstream-update` issue when action is required;
-5. closes resolved monitor issues when all three identities agree; and
-6. dispatches the trusted workflow only for `rebuild_candidate`, only when the
-   repository variable `TRUSTED_REBUILD_ENABLED` is exactly `true`, and only
-   when no rebuild or candidate-record pull request is active.
+`.github/workflows/upstream-monitor.yml` runs at minute 17 each hour and on
+manual dispatch. The GitHub-hosted job:
 
-The monitor never invokes acquisition, staging, native compilation, runtime
-assembly, AppImage packaging, artifact upload, or release creation.
+1. executes `cargo run --locked -- check-upstream`;
+2. validates its schema-1 output;
+3. checks whether the exact non-draft, non-prerelease public release exists;
+4. maintains one `upstream-update` issue;
+5. checks all three downstream workflows for active runs; and
+6. dispatches exactly one required transition.
 
-## Trusted runner
+It never downloads the desktop artifact or handles payload bytes.
 
-`.github/workflows/rebuild-candidate.yml` has only a `workflow_dispatch`
-trigger and selects all four labels:
+All contract refresh, rebuild, and release workflows use the shared
+`codex-automatic-release-pipeline` concurrency group. This prevents
+cooperative overlap between retained generations and digest-state commits.
+
+## Authenticated contract refresh
+
+`.github/workflows/refresh-contract.yml` runs first when the feed changes. Its
+trusted job has read-only repository permission and a checkout with
+`persist-credentials: false`.
+
+It:
+
+1. acquires the exact feed-selected archive with redirects disabled;
+2. authenticates the complete bytes with the compiled Sparkle trust root;
+3. stages only the source archive, `app.asar`, and provenance;
+4. runs `inspect-contract-source`;
+5. requires the authenticated ASAR to retain the reviewed Electron and native
+   package contract;
+6. derives one unambiguous Codex version and ripgrep
+   version/revision-prefix from the authenticated Mach-O resources;
+7. dereferences the exact `openai/codex` and `BurntSushi/ripgrep` GitHub tags;
+8. selects exactly one official
+   `codex-package-x86_64-unknown-linux-musl.tar.gz` asset;
+9. verifies its API-recorded size and SHA-256 after complete download; and
+10. runs `refresh-runtime-contract`, which verifies the strict six-file
+    package layout, metadata, Linux x86_64 ELF identities, and source markers.
+
+The compatible refresh may change application version/build/ASAR, Codex
+version/revision/package digests, ripgrep version/revision/digest, and
+authenticated source-resource digests. It may not silently change Electron,
+Node ABI, native package identities, source patches, packaging tools, target
+architecture, or package layout.
+
+An Electron/native/structural change fails closed. The monitor issue remains
+open for a source change and review; automation does not invent a successor
+contract.
+
+Only compact canonical runtime-contract JSON crosses the job boundary. A
+GitHub-hosted job verifies that `main` still equals the trusted job's source
+commit, installs only `data/runtime-contract.json`, runs focused Rust and
+repository-boundary tests, commits directly to the default branch with the
+scoped automation deploy key, and dispatches the rebuild. No proprietary
+payload is uploaded.
+
+## Trusted rebuild
+
+`.github/workflows/rebuild-candidate.yml` is dispatch-only and selects:
 
 ```text
 self-hosted, linux, x64, codex-packager-trusted
 ```
 
-Use a dedicated or ephemeral runner whose account, filesystem, displays,
-container runtime, network policy, and GitHub token are treated as a release
-engineering boundary. Do not add the custom label to a general-purpose public
-repository runner. The workflow is intentionally not triggered by pushes or
-pull requests.
+The payload job again has read-only repository permission and no persisted
+credential. It permits only two guarded reasons:
 
-The payload-handling job checks out with persisted credentials disabled and
-has read-only repository permission. After validation, it passes only the
-small base64-encoded candidate JSON through a job output. A separate
-GitHub-hosted job validates that digest-only record, runs the repository
-boundary tests, and receives the write token needed to open the pull request.
-The proprietary application is never executed in a job holding repository
-write authority.
+- `stale_candidate` requires `check-upstream` to report
+  `rebuild_candidate`; or
+- `missing_release` requires it to report `current`.
 
-The locked Cargo build produces both `codex-linux-packager` and
-`codex-linux-updater`. Each deterministic AppDir consumes the same independently
-hashed updater executable and generates a release-specific schema-1 config
-bound to the compiled update key and manifest URL. Packaged launch tests set
-`CODEX_LINUX_DISABLE_UPDATES=1`; the required network-isolated runtime checks
-must not contact the release channel.
+Both require the feed and runtime-contract version/build to match the request.
 
-The runner must provide:
+The job then:
 
-- stable Rust compatible with the repository MSRV and locked dependencies;
-- host Node.js at least 22.12.0 and npm;
-- exact `/usr/bin/docker`, `/usr/bin/sudo`, `/usr/bin/bwrap`, and
-  `/usr/bin/readelf` executables matching repository variables;
-- noninteractive sudo permission limited sufficiently to launch the reviewed
-  OCI runtime;
-- genuine `DISPLAY`, `WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR` sessions;
-- the digest-addressed build and older-GLIBC images;
-- an absolute private cache root; and
-- an absolute private retained-output root.
+- resolves every cached tool/input by contract digest;
+- reacquires and reauthenticates the source;
+- rebuilds the locked native graph in the digest-addressed OCI image;
+- performs real SQLite and PTY probes under exact Electron;
+- assembles and inventories the Linux runtime;
+- builds two AppDirs from separate roots;
+- builds two AppImages with the second packaging operation network-isolated;
+- requires byte equality;
+- extracts and audits every ELF;
+- performs genuine host Wayland and X11 extract-and-run launches;
+- performs a non-root, network-disabled launch in the exact older-glibc
+  baseline; and
+- runs `release-readiness` over the exact result.
+
+The mode-0700 retained generation remains beneath `PACKAGER_OUTPUT_ROOT`.
+Payloads never use GitHub Actions artifact transfer.
+
+After the engineering gates pass, the trusted job emits only a bounded
+schema-1 candidate record. A GitHub-hosted write job checks that the default
+branch is still the exact build source commit, validates the record and
+repository boundary, commits only `data/engineering-candidate.json` with the
+same scoped automation deploy key, and dispatches the release workflow.
+
+Fresh records require:
+
+```text
+engineering_candidate: true
+automatic_publication_permitted: true
+stable_publication_permitted: false
+release_status: automatic_engineering_publication_permitted_not_stable_approval
+```
+
+## Protected signing and public release
+
+`.github/workflows/release-draft.yml` retains its historical filename but now
+publishes the public automatic engineering release.
+
+The `release-signing` job:
+
+- runs on the trusted retained-output runner;
+- has `contents: read`;
+- receives `UPDATE_SIGNING_SEED_BASE64` only through the
+  `release-signing` environment;
+- checks the retained AppImage, AppDir manifest, provenance,
+  release-readiness scope, Cargo.lock, and exact source commit against the
+  committed candidate record;
+- builds the exact source commit offline;
+- signs the update manifest;
+- creates deterministic SPDX, notices, checksums, and exact-commit
+  attestation; and
+- keylessly verifies the complete local set.
+
+The `release-draft` job:
+
+- has `contents: write` but no signing seed;
+- keylessly verifies the retained handoff;
+- refuses to replace an existing release tag;
+- creates a public, non-prerelease release marked latest;
+- redownloads exactly ten expected assets; and
+- keylessly verifies every redownloaded byte and signed relationship.
+
+Environment reviewer approvals are optional policy, not a correctness
+dependency. Fully automatic operation uses environment secret scoping without
+required reviewers. The signing/write authority split and all fail-closed
+cryptographic and runtime checks remain mandatory.
+
+## Required runner configuration
+
+Use a dedicated or ephemeral runner. Never add
+`codex-packager-trusted` to a general-purpose runner exposed to pull-request
+workflows.
 
 Required repository variables:
 
 | Variable | Meaning |
 | --- | --- |
-| `TRUSTED_REBUILD_ENABLED` | Exact `true` enables monitor dispatch |
-| `PACKAGER_CACHE_ROOT` | Absolute preseeded cache root |
+| `AUTOMATIC_RELEASE_ENABLED` | Exact `true` enables the hourly dispatch chain |
+| `PACKAGER_CACHE_ROOT` | Absolute private cache root |
 | `PACKAGER_OUTPUT_ROOT` | Absolute private retained-output root |
+| `PACKAGER_GH_SHA256` | SHA-256 of `/usr/bin/gh` used for official tag/asset resolution |
 | `PACKAGER_OCI_RUNTIME_SHA256` | SHA-256 of `/usr/bin/docker` |
 | `PACKAGER_SUDO_SHA256` | SHA-256 of `/usr/bin/sudo` |
 | `PACKAGER_BUBBLEWRAP_SHA256` | SHA-256 of `/usr/bin/bwrap` |
 | `PACKAGER_READELF_SHA256` | SHA-256 of `/usr/bin/readelf` |
 | `PACKAGER_OLDER_GLIBC_IMAGE_ID` | Exact local `sha256:<64 hex>` image ID |
+| `PACKAGER_CARGO_DENY` | Absolute reviewed `cargo-deny` executable |
+| `PACKAGER_CARGO_DENY_SHA256` | Exact SHA-256 of that executable |
 
-The preseeded cache layout is derived from the reviewed JSON contracts:
+Required environment secret:
+
+| Environment | Secret and scope |
+| --- | --- |
+| `automation-commit` | `AUTOMATION_DEPLOY_KEY`, one dedicated repository deploy key with write access; available only to the two GitHub-hosted digest-state jobs |
+| `release-signing` | `UPDATE_SIGNING_SEED_BASE64`, exactly one base64-encoded 32-byte Ed25519 seed |
+
+`main` is protected by a branch ruleset requiring the canonical CI and MSRV
+checks for ordinary changes. The ruleset grants bypass only to repository
+deploy-key pushes so the two generated-state commits do not need to weaken
+human branch protection. The dedicated private key is stored only in the
+`automation-commit` environment; payload-handling and release-signing jobs
+never receive it.
+
+The runner also needs stable Rust, Node.js at least 22.12.0, npm,
+noninteractive access to the reviewed OCI runtime, valid Wayland/X11 sessions,
+the digest-addressed native build image, older-glibc image, Electron ZIP and
+headers, AppImage tools, and the native npm cache.
+
+The cache layout is:
 
 ```text
 <cache>/
@@ -114,79 +231,21 @@ The preseeded cache layout is derived from the reviewed JSON contracts:
 └── npm-native/
 ```
 
-Every file digest is checked against its reviewed contract before use. Native
-installation remains offline; the workflow does not pass `--allow-network`.
+Contract refresh can add a newly authenticated Codex package to its
+version-addressed cache directory. Native installation and the second
+deterministic packaging pass remain offline.
 
-## Rebuild result
+## Failure and retry behavior
 
-Each run creates a new mode-0700 generation below `PACKAGER_OUTPUT_ROOT` and
-never replaces an earlier generation. It retains:
+Any failure leaves the public release unchanged. The retained private
+generation is preserved for diagnosis. Digest state is written only after the
+corresponding trusted job succeeds, and each GitHub-hosted writer refuses to
+commit if the default branch advanced.
 
-- the downloaded authenticated source;
-- narrow stage, native build, runtime, and two AppDirs;
-- the twice-built verified AppImage;
-- the exact updater/config inventory embedded in both AppDirs;
-- all schema-1 phase evidence; and
-- the release-readiness assessment.
+The hourly monitor retries once no refresh, rebuild, or release run is active.
+It never promotes an old candidate merely because its version matches.
 
-No payload-bearing file from that generation is uploaded to GitHub. After all
-implemented engineering gates validate, only the digest-record JSON crosses to
-the GitHub-hosted record job, which opens a pull request changing
-`data/engineering-candidate.json`. That file records version/build, exact
-source commit, evidence digests, artifact bytes, and the explicit
-`not_release_approved_do_not_publish` disposition.
-
-If any phase fails, the partial private generation remains on the trusted
-runner for diagnosis and the candidate record is not changed. A later hourly
-monitor may retry only after no run or candidate pull request remains active.
-
-## Protected draft handoff
-
-After a candidate-record pull request is independently reviewed and merged,
-`.github/workflows/release-draft.yml` can be dispatched manually with its exact
-version, build, source commit, and retained generation basename. Before
-signing, it requires the retained AppImage digest/length, AppDir manifest,
-AppImage provenance, Cargo.lock, and complete release-readiness assessment
-scope to equal `data/engineering-candidate.json`.
-
-The workflow uses two protected jobs:
-
-1. `release-signing` has read-only repository permission and receives
-   `UPDATE_SIGNING_SEED_BASE64`. It verifies the exact pinned `cargo-deny`
-   executable, builds the selected source commit offline, signs the update
-   manifest, prepares deterministic SPDX/notices/checksums/attestation, and
-   keylessly verifies the local set.
-2. `release-draft` has repository write permission but no signing seed. It
-   keylessly verifies the retained handoff, creates only a non-public GitHub
-   draft, redownloads all ten assets, and keylessly verifies them again.
-
-No GitHub Actions artifact transfer is used. Both jobs must run on the one
-dedicated retained-output runner, or on separately isolated runners with the
-same private authenticated `PACKAGER_OUTPUT_ROOT`; an ordinary shared
-user-writable network directory is not a stronger trust boundary. The raw seed
-is decoded only inside a fresh mode-0700 `mktemp` directory as a mode-0600 file;
-the file and directory are removed by the signing step's cleanup trap.
-
-In addition to the rebuild variables, draft preparation requires:
-
-| Setting | Meaning |
-| --- | --- |
-| `PACKAGER_CARGO_DENY` | Absolute path to the reviewed `cargo-deny` executable |
-| `PACKAGER_CARGO_DENY_SHA256` | Exact SHA-256 of that executable |
-| `UPDATE_SIGNING_SEED_BASE64` | Protected `release-signing` environment secret containing exactly one base64-encoded 32-byte seed |
-
-The `release-signing` and `release-draft` environments must require appropriate
-reviewers before the secret is imported or the workflow is dispatched. The
-workflow source alone does not prove those controls exist.
-
-## Publication boundary
-
-The scheduled automation rebuilds engineering candidates; it does not publish
-them. The separate manual workflow creates only a non-public draft.
-`stable_publication_permitted` remains false while any gate in
-`docs/release-gates.md` is blocking. Enabling the runner or creating a draft
-does not establish independent notice/license review, protected-operation
-approval, complete desktop/FUSE coverage, rollback readiness, or frozen
-independent approval. It also does not evaluate or establish the publisher's
-payload redistribution or trademark authority, which is outside the machine
-gate catalog.
+These controls address cooperative writers, ordinary failures, and the
+documented permission-boundary model. They do not make owner-writable output
+immutable against a hostile same-UID process, which is explicitly outside
+`docs/threat-model.md`.
