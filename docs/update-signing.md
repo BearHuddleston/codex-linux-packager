@@ -93,10 +93,11 @@ through the `release-signing` environment, verifies that the retained
 generation matches `engineering-candidate.json`, and stores signed evidence
 under the private retained-output root.
 
-A separate `release-draft` job has repository write permission but receives no
-signing seed. It keylessly verifies the retained handoff, creates a public
-non-prerelease GitHub release marked latest, redownloads every asset, and
-keylessly verifies the downloaded set.
+A separate `release-draft` job keeps `GITHUB_TOKEN` read-only and receives an
+environment-scoped, repository-limited release API credential but no signing
+seed or deploy key. It keylessly verifies the retained handoff, creates a
+public non-prerelease GitHub release marked latest, redownloads every asset,
+and keylessly verifies the downloaded set.
 
 ## Operational requirements
 
@@ -106,8 +107,9 @@ For automatic publication:
    it;
 2. establish backup and recovery appropriate to the publisher;
 3. keep the signing environment free of repository write authority;
-4. prevent pull-request jobs and unrelated proprietary application processes from
-   receiving the seed;
+4. keep the signing seed, tag deploy key, and release API credential in
+   separate environments, and prevent pull-request jobs and unrelated
+   proprietary application processes from receiving them;
 5. bind the signing receipt, release attestation, and all release assets to one
    exact reviewed commit/tree and merged candidate digest set;
 6. verify the public key and fingerprint independently after import; and
@@ -116,7 +118,7 @@ For automatic publication:
 
 Required-reviewer pauses are intentionally absent from the automatic
 engineering channel. They may be added for a separately defined stable channel
-without combining signing and repository-write authority.
+without combining signing, tag, and publication authority.
 
 Loss of the seed stops updates for installed images carrying this pin.
 Suspected disclosure requires halting publication. A replacement key cannot be

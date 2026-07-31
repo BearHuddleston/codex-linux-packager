@@ -50,11 +50,13 @@ reproducibility, ELF, Wayland, X11, and older-glibc gates pass.
 `stable_publication_permitted` remains false while the broader stable catalog
 is incomplete.
 
-Keep signing and repository-write authority in separate jobs. The read-only
-signing job receives the Ed25519 seed and prepares signed evidence. The keyless
-write job re-verifies the exact handoff, creates a public nonprerelease latest
-release, redownloads all assets, and verifies them again. Environment reviewer
-pauses are not required for the automatic channel.
+Keep signing, tag creation, and release-publication authority in separate
+jobs. The read-only signing job receives the Ed25519 seed and prepares signed
+evidence. The signing-key-free publication job keeps `GITHUB_TOKEN` read-only,
+receives a repository-limited release API credential, re-verifies the exact
+handoff, creates a public nonprerelease latest release, redownloads all assets,
+and verifies them again. Environment reviewer pauses are not required for the
+automatic channel.
 
 After signing succeeds, a separate payload-free job uses the scoped deploy key
 to create or verify the exact lightweight source tag. This avoids asking the
