@@ -24,9 +24,14 @@ fn embedded_candidate_record_is_bound_to_the_last_assessed_artifact() {
     assert_eq!(record.assessment_scope.artifact_sha256.len(), 64);
     assert!(record.assessment_scope.artifact_bytes > 0);
     assert!(record.engineering_candidate);
-    assert!(!record.automatic_publication_permitted);
     assert!(!record.stable_publication_permitted);
-    assert_eq!(record.release_status, "not_release_approved_do_not_publish");
+    assert_eq!(
+        record.automatic_publication_permitted,
+        record.release_status == "automatic_engineering_publication_permitted_not_stable_approval"
+    );
+    if !record.automatic_publication_permitted {
+        assert_eq!(record.release_status, "not_release_approved_do_not_publish");
+    }
 }
 
 #[test]

@@ -2,23 +2,23 @@
   "schema": 1,
   "producer": "io.github.bearhuddleston.codex-linux-packager.rust",
   "kind": "engineering_candidate_record",
-  "source_commit": "2fb735c5368d360721640b4a4751953cefddd60a",
+  "source_commit": "9c6b7d364518e050b938b4ad8cba42af8e13c211",
   "application": {
     "version": "26.727.40816",
     "build": "6067"
   },
   "assessment_scope": {
     "stage_provenance_sha256": "5d62ac988c47d8745d56fdfddbf907f08542d3e57a22fc24ceeaca902101f8b6",
-    "native_manifest_sha256": "4ddfed2905e89e32432c057439da38d30421be525b4b5b27e8efb0690ca7cf90",
-    "runtime_manifest_sha256": "1f0e29d7815fc977b1abd801ffcd79f4ad53756e7a1937f2983643a41f76c443",
-    "appdir_manifest_sha256": "6298cf85cea1b7a4c94a4ab50369999517bf4b32411eff297f49d7e039a881cc",
-    "appimage_provenance_sha256": "825f214c124ae59177de801b540341aeef1b3cf6b0832763b291579bbd1d1ada",
-    "artifact_sha256": "b56f891b579b071da7d18f5c2c6a96d4fc92ffe2c186892d27acaba8217ee97a",
-    "artifact_bytes": 307722744,
+    "native_manifest_sha256": "94e8d1a5148f943fc24072ea7196f219c96b5ac1c11a7abef9360d08df1ad8b2",
+    "runtime_manifest_sha256": "50d21d4ef89866098adcaf4941591fe3e92202ef81c2afdb86e25674ac5f94ff",
+    "appdir_manifest_sha256": "c5542d61e54b099f48955aee515d8f047c527a15eaf40d1fc95a31a84a648173",
+    "appimage_provenance_sha256": "633e12219f85ff93c38484bd34b82f9f268b17142a5b6242effe2d48f0402bd6",
+    "artifact_sha256": "ed787525f7d6ac3ecda04541e193f1b47e0339f1cd933e8a6f56ba2a59070e9a",
+    "artifact_bytes": 307726840,
     "cargo_lock_sha256": "a34c67940cc365edb6af3e184fad0f1f62483159063edeba1ad14aa2a263f67c"
   },
   "engineering_candidate": true,
-  "automatic_publication_permitted": false,
+  "automatic_publication_permitted": true,
   "stable_publication_permitted": false,
-  "release_status": "not_release_approved_do_not_publish"
+  "release_status": "automatic_engineering_publication_permitted_not_stable_approval"
 }

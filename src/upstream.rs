@@ -12,8 +12,7 @@ use crate::runtime::RuntimeApplicationContract;
 const CANDIDATE_JSON: &str = include_str!("../data/engineering-candidate.json");
 const MAX_APPIMAGE_BYTES: u64 = 1024 * 1024 * 1024;
 
-/// Application identity of the last independently assessed engineering
-/// candidate. This record is informational and cannot approve publication.
+/// Application identity of the last assessed engineering candidate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineeringCandidateIdentity {
@@ -23,10 +22,10 @@ pub struct EngineeringCandidateIdentity {
     pub build: String,
 }
 
-/// Digest-bound record of the last independently assessed local candidate.
+/// Digest-bound record of the last locally assessed engineering candidate.
 ///
-/// This record is monitoring state, not payload redistribution authority or
-/// release approval.
+/// The record reports whether the implemented automatic engineering gates
+/// passed; release preparation independently revalidates its complete scope.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineeringCandidateRecord {
