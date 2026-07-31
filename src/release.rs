@@ -25,7 +25,7 @@ const PUBLICATION_SCOPE: &str = "bytes_at_durable_commit_boundary_under_document
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_CARGO_LOCK_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_APPIMAGE_BYTES: u64 = 1024 * 1024 * 1024;
-const RELEASE_STATUS: &str = "not_release_approved_do_not_publish";
+const RELEASE_STATUS: &str = "automatic_engineering_publication_permitted_not_stable_approval";
 
 /// Whether one independently applicable release gate is presently cleared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +95,7 @@ pub struct ReleaseAssessmentScope {
     pub cargo_lock_sha256: String,
 }
 
-/// Deterministic, deliberately non-approving release-readiness report.
+/// Deterministic automatic-engineering and stable-readiness report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReleaseReadinessReport {
@@ -111,12 +111,16 @@ pub struct ReleaseReadinessReport {
     pub assessment_scope: ReleaseAssessmentScope,
     /// True after the implemented engineering pipeline evidence validates.
     pub engineering_candidate: bool,
+    /// True when the implemented authentication, ABI, reproducibility, ELF,
+    /// and launch gates permit publication on the automatic engineering
+    /// channel. This is not stable-release approval.
+    pub automatic_publication_permitted: bool,
     /// True only if every cataloged technical and operational gate is
     /// satisfied. Publisher legal decisions are outside this assessment.
     pub stable_publication_permitted: bool,
     /// Every gate in stable order, including both cleared and uncleared gates.
     pub gates: Vec<ReleaseGate>,
-    /// Stable identifiers of all gates that still prevent publication.
+    /// Stable identifiers of all gates that still prevent stable publication.
     pub blocking_gate_ids: Vec<String>,
     /// Explicit public-release disposition.
     pub release_status: String,
@@ -362,6 +366,7 @@ pub fn assess_release_readiness(
         publication_scope: PUBLICATION_SCOPE.to_owned(),
         assessment_scope: scope,
         engineering_candidate: true,
+        automatic_publication_permitted: true,
         stable_publication_permitted,
         gates,
         blocking_gate_ids,

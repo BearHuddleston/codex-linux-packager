@@ -1,4 +1,4 @@
-name: Prepare protected draft release
+name: Publish protected automatic engineering release
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: protected-codex-release
+  group: codex-automatic-release-pipeline
   cancel-in-progress: false
 
 env:
@@ -57,8 +57,10 @@ jobs:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
           CANDIDATE_GENERATION: ${{ inputs.candidate_generation }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AUTOMATIC_RELEASE_ENABLED: ${{ vars.AUTOMATIC_RELEASE_ENABLED }}
         run: |
           set -euo pipefail
+          [[ "${AUTOMATIC_RELEASE_ENABLED}" == "true" ]]
           [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
           [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
           [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
@@ -84,8 +86,9 @@ jobs:
               .application.build == $build and
               .source_commit == $source_commit and
               .engineering_candidate == true and
+              .automatic_publication_permitted == true and
               .stable_publication_permitted == false and
-              .release_status == "not_release_approved_do_not_publish"
+              .release_status == "automatic_engineering_publication_permitted_not_stable_approval"
             ' data/engineering-candidate.json >/dev/null
           git cat-file -e "${SOURCE_COMMIT}^{commit}"
           git merge-base --is-ancestor "${SOURCE_COMMIT}" "origin/${DEFAULT_BRANCH}"
@@ -124,8 +127,9 @@ jobs:
               .kind == "release_readiness_assessment" and
               .assessment_scope == $candidate[0].assessment_scope and
               .engineering_candidate == true and
+              .automatic_publication_permitted == true and
               .stable_publication_permitted == false and
-              .release_status == "not_release_approved_do_not_publish"
+              .release_status == "automatic_engineering_publication_permitted_not_stable_approval"
             ' "${candidate_root}/evidence/release-readiness.json" >/dev/null
           [[ ! -e "${release_root}" ]]
           {
@@ -224,11 +228,11 @@ jobs:
             printf -- '- Source commit: `%s`\n' "${SOURCE_COMMIT}"
             printf -- '- Retained release root: `%s`\n' "${RELEASE_ROOT}"
             printf -- '- Signing key persisted by workflow: `no`\n'
-            printf -- '- Public release created: `no`\n'
+            printf -- '- Repository write authority in signing job: `no`\n'
           } >>"${GITHUB_STEP_SUMMARY}"
 
   draft:
-    name: Create and redownload a non-public draft
+    name: Create and redownload the public engineering release
     needs: sign
     runs-on: [self-hosted, linux, x64, codex-packager-trusted]
     environment: release-draft
@@ -287,7 +291,7 @@ jobs:
             --source-tree "${SOURCE_TREE}" \
             >"${RELEASE_ROOT}/draft-preflight-receipt.json"
 
-      - name: Create the protected draft release
+      - name: Create the protected public engineering release
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
@@ -299,22 +303,22 @@ jobs:
             echo "release tag already exists; refusing replacement" >&2
             exit 1
           fi
-          notes="${RUNNER_TEMP}/draft-release-notes-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.md"
+          notes="${RUNNER_TEMP}/automatic-release-notes-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.md"
           {
-            printf '# Non-public engineering draft\n\n'
+            printf '# Unofficial automatic Linux engineering release\n\n'
             printf 'Codex application `%s` build `%s`.\n\n' \
               "${REQUESTED_VERSION}" "${REQUESTED_BUILD}"
-            printf 'This draft is unofficial and unaffiliated. '
-            printf 'It is not approved for public distribution. '
-            printf 'Independent notice review, the complete desktop/FUSE matrix, '
-            printf 'rollback exercise, and frozen independent review remain required.\n\n'
+            printf 'This public build is unofficial and unaffiliated with OpenAI. '
+            printf 'It passed the repository authentication, native ABI, reproducibility, '
+            printf 'ELF, older-glibc, Wayland, and X11 engineering checks. '
+            printf 'It is not a claim of stable support or OpenAI endorsement.\n\n'
             printf 'Source commit: `%s`\n' "${SOURCE_COMMIT}"
           } >"${notes}"
           gh release create "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --draft \
+            --latest \
             --target "${SOURCE_COMMIT}" \
-            --title "Codex Desktop Linux engineering draft ${REQUESTED_VERSION}-${REQUESTED_BUILD}" \
+            --title "Codex Desktop Linux ${REQUESTED_VERSION}-${REQUESTED_BUILD} (unofficial)" \
             --notes-file "${notes}" \
             "${CANDIDATE_ROOT}/appimage/codex-desktop-unofficial-x86_64.AppImage" \
             "${CANDIDATE_ROOT}/appimage/provenance.json" \
@@ -327,13 +331,13 @@ jobs:
             "${RELEASE_ROOT}/evidence/release-attestation.json" \
             "${RELEASE_ROOT}/evidence/third-party-notices.json"
 
-      - name: Redownload and keylessly verify every draft asset
+      - name: Redownload and keylessly verify every public asset
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
-          download="${RUNNER_TEMP}/draft-download-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          download="${RUNNER_TEMP}/release-download-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           evidence="${download}/evidence"
           mkdir --mode=0700 -- "${download}"
           gh release download "${RELEASE_TAG}" \
@@ -342,9 +346,10 @@ jobs:
           release_inventory="$(
             gh release view "${RELEASE_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
-              --json isDraft,assets \
+              --json isDraft,isPrerelease,assets \
               --jq '
-                (.isDraft == true) and
+                (.isDraft == false) and
+                (.isPrerelease == false) and
                 ((.assets | map(.name) | sort) == [
                   "Cargo.lock",
                   "SHA256SUMS",
@@ -403,9 +408,9 @@ jobs:
             --source-tree "${SOURCE_TREE}" \
             >"${RELEASE_ROOT}/draft-redownload-verification.json"
           {
-            printf '### Draft release verification\n\n'
-            printf -- '- Draft tag: `%s`\n' "${RELEASE_TAG}"
+            printf '### Public automatic engineering release verification\n\n'
+            printf -- '- Release tag: `%s`\n' "${RELEASE_TAG}"
             printf -- '- Redownloaded asset verification: `passed`\n'
-            printf -- '- Public visibility: `draft only`\n'
-            printf -- '- Stable publication: `not performed`\n'
+            printf -- '- Public visibility: `public latest release`\n'
+            printf -- '- Stable support claim: `not made`\n'
           } >>"${GITHUB_STEP_SUMMARY}"

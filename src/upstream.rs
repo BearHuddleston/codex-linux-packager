@@ -44,9 +44,12 @@ pub struct EngineeringCandidateRecord {
     pub assessment_scope: ReleaseAssessmentScope,
     /// Whether the implemented engineering pipeline passed.
     pub engineering_candidate: bool,
+    /// Whether this exact candidate passed the automatic engineering-channel
+    /// publication gates.
+    pub automatic_publication_permitted: bool,
     /// Must remain false until every independent publication gate is cleared.
     pub stable_publication_permitted: bool,
-    /// Explicit non-publication disposition.
+    /// Explicit automatic-engineering or pending disposition.
     pub release_status: String,
 }
 
@@ -152,11 +155,16 @@ pub fn engineering_candidate_record() -> Result<EngineeringCandidateRecord, Upst
             )));
         }
     }
+    let disposition_is_valid = (record.automatic_publication_permitted
+        && record.release_status
+            == "automatic_engineering_publication_permitted_not_stable_approval")
+        || (!record.automatic_publication_permitted
+            && record.release_status == "not_release_approved_do_not_publish");
     if record.assessment_scope.artifact_bytes == 0
         || record.assessment_scope.artifact_bytes > MAX_APPIMAGE_BYTES
         || !record.engineering_candidate
         || record.stable_publication_permitted
-        || record.release_status != "not_release_approved_do_not_publish"
+        || !disposition_is_valid
     {
         return Err(UpstreamError::Invalid(
             "engineering candidate disposition is invalid".to_owned(),

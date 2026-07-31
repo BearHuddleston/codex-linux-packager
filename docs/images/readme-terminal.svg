@@ -1,15 +1,15 @@
 <svg
   xmlns="http://www.w3.org/2000/svg"
   width="1320"
-  height="850"
-  viewBox="0 0 1320 850"
+  height="920"
+  viewBox="0 0 1320 920"
   role="img"
   aria-labelledby="title description"
 >
   <title id="title">codex-linux-packager command-line help</title>
   <desc id="description">
     Terminal capture generated from the real codex-linux-packager help output,
-    listing its fifteen acquisition, packaging, update-signing, release-evidence,
+    listing its seventeen acquisition, contract-refresh, packaging, update-signing, release-evidence,
     monitoring, and assessment commands.
   </desc>
 
@@ -23,12 +23,12 @@
     </filter>
   </defs>
 
-  <rect width="1320" height="770" rx="28" fill="url(#backdrop)"/>
+  <rect width="1320" height="920" rx="28" fill="url(#backdrop)"/>
   <rect
     x="28"
     y="28"
     width="1264"
-    height="794"
+    height="864"
     rx="16"
     fill="#161b22"
     stroke="#30363d"
@@ -64,31 +64,33 @@
     <text x="54" y="224" fill="#f0f6fc" font-weight="700">Commands:</text>
     <text x="54" y="251" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect</tspan>            Inspect release metadata from the Codex Sparkle feed</text>
     <text x="54" y="278" fill="#c9d1d9">  <tspan fill="#79c0ff">check-upstream</tspan>     Compare the latest feed release with reviewed contract and candidate state</text>
-    <text x="54" y="305" fill="#c9d1d9">  <tspan fill="#79c0ff">acquire-artifact</tspan>   Download and authenticate one exact feed-selected desktop artifact</text>
-    <text x="54" y="332" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-artifact</tspan>   Authenticate and inspect a downloaded desktop artifact</text>
-    <text x="54" y="359" fill="#c9d1d9">  <tspan fill="#79c0ff">stage</tspan>              Authenticate and stage the narrow permitted source set</text>
-    <text x="54" y="386" fill="#c9d1d9">  <tspan fill="#79c0ff">extract</tspan>            Extract authenticated staged inputs for a later phase</text>
-    <text x="54" y="413" fill="#c9d1d9">  <tspan fill="#79c0ff">build-native</tspan>       Rebuild required native modules for the target Electron ABI</text>
-    <text x="54" y="440" fill="#c9d1d9">  <tspan fill="#79c0ff">assemble-runtime</tspan>   Assemble the pinned Linux x86_64 Electron runtime</text>
-    <text x="54" y="467" fill="#c9d1d9">  <tspan fill="#79c0ff">build-appdir</tspan>       Construct a deterministic AppDir</text>
-    <text x="54" y="494" fill="#c9d1d9">  <tspan fill="#79c0ff">pack-appimage</tspan>      Construct and verify a deterministic AppImage</text>
-    <text x="54" y="521" fill="#c9d1d9">  <tspan fill="#79c0ff">generate-update-key</tspan> Generate a private Ed25519 update-signing seed and emit only its public identity</text>
-    <text x="54" y="548" fill="#c9d1d9">  <tspan fill="#79c0ff">sign-update</tspan>         Sign one verified AppImage and publish its pinned schema-1 update manifest</text>
-    <text x="54" y="575" fill="#c9d1d9">  <tspan fill="#79c0ff">prepare-release</tspan>     Prepare deterministic signed release evidence without publishing a release</text>
-    <text x="54" y="602" fill="#c9d1d9">  <tspan fill="#79c0ff">verify-release</tspan>      Keylessly reverify signed release evidence and exact external assets</text>
-    <text x="54" y="629" fill="#c9d1d9">  <tspan fill="#79c0ff">release-readiness</tspan>  Assess one exact candidate against every independent release gate</text>
+    <text x="54" y="305" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-contract-source</tspan>  Derive compatible runtime identities from an authenticated stage</text>
+    <text x="54" y="332" fill="#c9d1d9">  <tspan fill="#79c0ff">refresh-runtime-contract</tspan> Refresh the runtime contract from authenticated and official inputs</text>
+    <text x="54" y="359" fill="#c9d1d9">  <tspan fill="#79c0ff">acquire-artifact</tspan>   Download and authenticate one exact feed-selected desktop artifact</text>
+    <text x="54" y="386" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-artifact</tspan>   Authenticate and inspect a downloaded desktop artifact</text>
+    <text x="54" y="413" fill="#c9d1d9">  <tspan fill="#79c0ff">stage</tspan>              Authenticate and stage the narrow permitted source set</text>
+    <text x="54" y="440" fill="#c9d1d9">  <tspan fill="#79c0ff">extract</tspan>            Extract authenticated staged inputs for a later phase</text>
+    <text x="54" y="467" fill="#c9d1d9">  <tspan fill="#79c0ff">build-native</tspan>       Rebuild required native modules for the target Electron ABI</text>
+    <text x="54" y="494" fill="#c9d1d9">  <tspan fill="#79c0ff">assemble-runtime</tspan>   Assemble the pinned Linux x86_64 Electron runtime</text>
+    <text x="54" y="521" fill="#c9d1d9">  <tspan fill="#79c0ff">build-appdir</tspan>       Construct a deterministic AppDir</text>
+    <text x="54" y="548" fill="#c9d1d9">  <tspan fill="#79c0ff">pack-appimage</tspan>      Construct and verify a deterministic AppImage</text>
+    <text x="54" y="575" fill="#c9d1d9">  <tspan fill="#79c0ff">generate-update-key</tspan> Generate a private Ed25519 update-signing seed and emit only its public identity</text>
+    <text x="54" y="602" fill="#c9d1d9">  <tspan fill="#79c0ff">sign-update</tspan>         Sign one verified AppImage and publish its pinned schema-1 update manifest</text>
+    <text x="54" y="629" fill="#c9d1d9">  <tspan fill="#79c0ff">prepare-release</tspan>     Prepare deterministic signed release evidence without publishing a release</text>
+    <text x="54" y="656" fill="#c9d1d9">  <tspan fill="#79c0ff">verify-release</tspan>      Keylessly reverify signed release evidence and exact external assets</text>
+    <text x="54" y="683" fill="#c9d1d9">  <tspan fill="#79c0ff">release-readiness</tspan>  Assess one exact candidate against every independent release gate</text>
 
-    <text x="54" y="674" fill="#f0f6fc" font-weight="700">Options:</text>
-    <text x="54" y="701" fill="#c9d1d9">  <tspan fill="#d2a8ff">-h, --help</tspan>     Print help</text>
-    <text x="54" y="728" fill="#c9d1d9">  <tspan fill="#d2a8ff">-V, --version</tspan>  Print version</text>
+    <text x="54" y="728" fill="#f0f6fc" font-weight="700">Options:</text>
+    <text x="54" y="755" fill="#c9d1d9">  <tspan fill="#d2a8ff">-h, --help</tspan>     Print help</text>
+    <text x="54" y="782" fill="#c9d1d9">  <tspan fill="#d2a8ff">-V, --version</tspan>  Print version</text>
   </g>
 
   <text
     x="1264"
-    y="804"
+    y="884"
     text-anchor="end"
     fill="#6e7681"
     font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
     font-size="13"
-  >Linux x86_64 · schema 1 · pre-release</text>
+  >Linux x86_64 · schema 1 · automatic engineering channel</text>
 </svg>

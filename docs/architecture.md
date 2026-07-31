@@ -27,10 +27,11 @@ retrieves only the fixed exact-origin Rustls HTTPS endpoint with redirects and
 content decoding disabled, bounded headers/body, and strict length handling.
 Tests use local fixtures and local HTTP servers.
 
-`upstream` compares the first authoritative feed item with the reviewed runtime
-application contract and the digest-only record of the last assessed
-engineering candidate. Its three-state result prevents a changed feed from
-self-authorizing contract changes.
+`upstream` compares the first authoritative feed item with the authenticated
+runtime application contract and the digest-only record of the last assessed
+engineering candidate. Its three-state result routes changed source through a
+separate compatibility-bounded refresh instead of treating feed metadata as a
+Linux dependency authority.
 
 `acquire-artifact` streams one exact feed-selected ZIP into a private
 mode-0600 file. It rejects redirects, wrong final URLs, encoded or transferred
@@ -50,6 +51,21 @@ and provenance through a no-replace durable transaction.
 `extract` expands only integrity-verified packed ASAR files into a new
 generation. Declared external files are never invented.
 
+### Compatibility-bounded contract refresh
+
+`contract_refresh` consumes a reauthenticated stage and the exact official
+Codex Linux package. It requires the authenticated root and native package
+metadata to remain inside `data/native-contract.json`, derives unambiguous
+Codex and ripgrep identities from the authenticated Mach-O resources,
+validates the official six-file Linux package and every executable identity,
+and emits a new canonical runtime contract without replacement.
+
+The workflow independently dereferences the matching upstream Git tags and
+verifies the GitHub API-recorded package size and SHA-256. Electron/native ABI,
+native packages and patches, target architecture, and package layout are a
+fixed compatibility boundary; structural changes fail rather than being
+inferred.
+
 ### Native build
 
 `native` reconciles the authenticated application with
@@ -67,9 +83,10 @@ SQLite and PTY round trips before publication.
 
 `runtime` consumes a freshly revalidated stage, independently pinned native
 manifest, official Electron Linux x64 ZIP, and version-matched official Codex
-package. It correlates the authenticated source metadata with Codex
-0.146.0-alpha.9.2 and ripgrep 15.2.0, validates every executable, includes only
-the Linux x86_64 policy set, and inventories every inclusion and omission.
+package. It correlates dynamic authenticated application, Codex, and ripgrep
+identities while cross-checking Electron against the fixed native ABI
+contract, validates every executable, includes only the Linux x86_64 policy
+set, and inventories every inclusion and omission.
 
 ### AppDir and AppImage
 
@@ -156,42 +173,42 @@ The four small evidence files publish as one private generation with no
 replacement. `verify-release` opens that generation descriptor-relatively,
 requires its exact four-file inventory and modes, rehashes every external
 asset, reconstructs the checksum/subject sets, and verifies the signature
-against the compiled pin. It receives no private key. Success states only that
-the signed bytes match; it does not imply operational approval or publication.
+against the compiled pin. It receives no private key. Success establishes the
+signed exact set used by the automatic engineering publisher; it does not make
+a stable-support claim.
 
 ### Release readiness
 
 `release` re-authenticates the stage and validates the exact native → runtime →
 AppDir → AppImage provenance chain, including updater/config identity, final
 AppImage bytes, and Cargo lockfile.
-It clears only seven engineering gates that the supplied evidence establishes.
-Publisher legal decisions remain outside the catalog. Independent completion
-of notice/license review, protected operation of signing and draft automation,
-the full platform matrix, rollback, and independent-review gates remain
-blocking. The command cannot authorize publication.
+It clears seven engineering gates that the supplied evidence establishes and
+sets `automatic_publication_permitted` for that exact set. Publisher legal
+decisions remain outside the catalog. Notice/license review, the full stable
+platform matrix, rollback policy, and frozen independent review remain
+blocking for `stable_publication_permitted`.
 
 ### Upstream automation
 
-The public hourly workflow executes only `check-upstream`, issue routing, and a
-guarded dispatch decision. Payload handling is isolated in a dispatch-only
-workflow selected by the custom `codex-packager-trusted` self-hosted-runner
-label. That workflow uses reviewed cache contracts, invokes every implemented
-phase, retains all payload-bearing outputs below a private local root, and
-has read-only repository permission with persisted checkout credentials
-disabled. It passes only the bounded digest record to a separate GitHub-hosted
-write job, which validates and proposes that record to Git.
+The public hourly workflow executes only `check-upstream`, public-release
+inspection, issue routing, and guarded dispatch. Changed source first enters
+the authenticated contract-refresh workflow. Payload handling in refresh and
+rebuild jobs is isolated by the `codex-packager-trusted` label, read-only
+repository permissions, and disabled persisted checkout credentials.
 
-The workflow source does not establish that a runner, protected environment, or
-independent reviewer exists. `TRUSTED_REBUILD_ENABLED` must remain unset or
-`false` until those operational prerequisites are configured.
+Only bounded contract or candidate JSON passes to GitHub-hosted write jobs.
+Those jobs require the default branch to remain at the exact trusted source
+commit, validate the repository boundary, commit one data file directly with a
+dedicated environment-scoped write deploy key, and dispatch the next state.
+The `main` ruleset requires canonical checks for ordinary changes and grants
+bypass only to deploy-key pushes. Payload-handling and signing jobs never
+receive that key.
 
-A second manual-only workflow selects a retained generation only after its
-exact digest scope matches the merged candidate record. Its `release-signing`
-job has a protected seed and read-only repository permission; its
-`release-draft` job has repository write permission but no seed. The latter
-keylessly re-verifies the local handoff, creates a non-public draft, redownloads
-all assets, and verifies them again. There is deliberately no public-promotion
-job.
+After a complete fresh rebuild, a read-only `release-signing` job receives the
+protected seed and prepares exact signed evidence. A separate keyless
+`release-draft` job receives repository write permission, creates the public
+nonprerelease latest release, redownloads all ten assets, and verifies them
+again. The historical workflow/job name does not imply draft visibility.
 
 ## Process and filesystem safety
 

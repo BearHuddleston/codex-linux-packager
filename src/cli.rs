@@ -63,6 +63,30 @@ pub enum PackagingCommand {
         #[arg(long, value_name = "XML")]
         fixture: Option<PathBuf>,
     },
+    /// Derive compatible runtime identities from one authenticated stage.
+    InspectContractSource {
+        /// Authenticated schema-1 stage generation.
+        #[arg(long, value_name = "DIRECTORY")]
+        stage: PathBuf,
+    },
+    /// Refresh the runtime contract from authenticated and official inputs.
+    RefreshRuntimeContract {
+        /// Authenticated schema-1 stage generation.
+        #[arg(long, value_name = "DIRECTORY")]
+        stage: PathBuf,
+        /// Exact official Codex Linux package archive.
+        #[arg(long, value_name = "TAR.GZ")]
+        codex_package: PathBuf,
+        /// Exact dereferenced OpenAI Codex release revision.
+        #[arg(long, value_name = "HEX")]
+        codex_revision: String,
+        /// Exact dereferenced ripgrep release revision.
+        #[arg(long, value_name = "HEX")]
+        ripgrep_revision: String,
+        /// New canonical runtime-contract JSON path.
+        #[arg(long, value_name = "JSON")]
+        output: PathBuf,
+    },
     /// Download and authenticate one exact feed-selected desktop artifact.
     AcquireArtifact {
         /// Exact official artifact URL emitted by `inspect`.
@@ -375,6 +399,8 @@ impl PackagingCommand {
         match self {
             Self::Inspect { .. } => "inspect",
             Self::CheckUpstream { .. } => "check-upstream",
+            Self::InspectContractSource { .. } => "inspect-contract-source",
+            Self::RefreshRuntimeContract { .. } => "refresh-runtime-contract",
             Self::AcquireArtifact { .. } => "acquire-artifact",
             Self::InspectArtifact { .. } => "inspect-artifact",
             Self::Stage { .. } => "stage",

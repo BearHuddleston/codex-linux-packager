@@ -1,6 +1,6 @@
 # 0009: Signed full-file AppImage updates
 
-Status: accepted
+Status: accepted; channel name amended by Decision 0011
 
 ## Context
 
@@ -23,7 +23,7 @@ restarted or hot-swapped; successfully installed bytes are used on the next
 launch.
 
 Use a project-owned Ed25519 release key independently pinned in
-`data/update-contract.json`. A canonical schema-1 payload binds the stable
+`data/update-contract.json`. A canonical schema-1 payload binds the automatic
 channel, Linux x86_64 target, immutable GitHub release tag and URL,
 version/build, source commit, release timestamp, complete AppImage length and
 SHA-256, and matching provenance SHA-256. Downloaded metadata cannot supply or
@@ -61,3 +61,6 @@ gates.
   already trusted release or a manual update.
 - Atomic exchange keeps the launch path complete across crashes, but it does
   not make user-owned output immutable against the same UID.
+
+Decision 0011 renamed the published update channel from `stable` to
+`automatic` so update metadata cannot be confused with a stable-support claim.

@@ -1,6 +1,6 @@
 # 0010: Signed evidence precedes a protected non-public draft
 
-Status: accepted
+Status: superseded by Decision 0011
 
 ## Context
 

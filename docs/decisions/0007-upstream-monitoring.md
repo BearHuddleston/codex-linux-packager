@@ -1,6 +1,6 @@
 # Decision 0007: separate public detection from trusted rebuilds
 
-- Status: accepted
+- Status: superseded by Decision 0011
 - Date: 2026-07-30
 
 ## Decision

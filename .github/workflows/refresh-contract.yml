@@ -1,0 +1,342 @@
+name: Refresh authenticated runtime contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact Codex application version observed by the feed
+        required: true
+        type: string
+      build:
+        description: Exact Codex application build observed by the feed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-automatic-release-pipeline
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  PACKAGER_CACHE_ROOT: ${{ vars.PACKAGER_CACHE_ROOT }}
+  PACKAGER_OUTPUT_ROOT: ${{ vars.PACKAGER_OUTPUT_ROOT }}
+  PACKAGER_GH_SHA256: ${{ vars.PACKAGER_GH_SHA256 }}
+
+jobs:
+  refresh:
+    name: Authenticate source and resolve compatible official inputs
+    runs-on: [self-hosted, linux, x64, codex-packager-trusted]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      contract_record: ${{ steps.contract.outputs.record }}
+      source_commit: ${{ steps.contract.outputs.source_commit }}
+    steps:
+      - name: Check out source without repository credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate trusted-runner configuration
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AUTOMATIC_RELEASE_ENABLED: ${{ vars.AUTOMATIC_RELEASE_ENABLED }}
+        run: |
+          set -euo pipefail
+          [[ "${AUTOMATIC_RELEASE_ENABLED}" == "true" ]]
+          [[ "${GITHUB_REF_NAME}" == "${DEFAULT_BRANCH}" ]]
+          [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
+          [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
+          [[ "${PACKAGER_CACHE_ROOT}" == /* ]]
+          [[ "${PACKAGER_OUTPUT_ROOT}" == /* ]]
+          [[ "${PACKAGER_GH_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ -d "${PACKAGER_CACHE_ROOT}" && ! -L "${PACKAGER_CACHE_ROOT}" ]]
+          [[ -d "${PACKAGER_OUTPUT_ROOT}" && ! -L "${PACKAGER_OUTPUT_ROOT}" ]]
+          [[ -f /usr/bin/gh && ! -L /usr/bin/gh ]]
+          [[ "$(sha256sum /usr/bin/gh | cut -d ' ' -f 1)" == "${PACKAGER_GH_SHA256}" ]]
+          rustc --version
+          cargo --version
+          /usr/bin/gh --version
+
+      - name: Allocate a private retained generation
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          umask 077
+          generation="${PACKAGER_OUTPUT_ROOT}/contract-${REQUESTED_VERSION}-${REQUESTED_BUILD}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir --mode=0700 -- "${generation}"
+          {
+            printf 'PACKAGER_GENERATION=%s\n' "${generation}"
+            printf 'PACKAGER_BIN=%s\n' "${GITHUB_WORKSPACE}/target/release/codex-linux-packager"
+          } >>"${GITHUB_ENV}"
+
+      - name: Build the locked packager
+        run: cargo build --release --locked
+
+      - name: Require the feed-selected contract-update state
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          "${PACKAGER_BIN}" check-upstream >"${PACKAGER_GENERATION}/upstream-status.json"
+          jq -e \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            '
+              .action == "review_contract_update" and
+              .contract_update_required == true and
+              .automatic_rebuild_permitted == false and
+              .latest_release.version == $version and
+              .latest_release.build == $build
+            ' "${PACKAGER_GENERATION}/upstream-status.json" >/dev/null
+
+      - name: Acquire and authenticate the selected source artifact
+        run: |
+          set -euo pipefail
+          status="${PACKAGER_GENERATION}/upstream-status.json"
+          "${PACKAGER_BIN}" acquire-artifact \
+            --url "$(jq -r '.latest_release.artifact.url' "${status}")" \
+            --signature "$(jq -r '.latest_release.artifact.ed25519_signature' "${status}")" \
+            --length "$(jq -r '.latest_release.artifact.length' "${status}")" \
+            --version "$(jq -r '.latest_release.version' "${status}")" \
+            --build "$(jq -r '.latest_release.build' "${status}")" \
+            --output "${PACKAGER_GENERATION}/source.zip" \
+            >"${PACKAGER_GENERATION}/artifact-acquisition.json"
+
+      - name: Stage only the authenticated source set
+        run: |
+          set -euo pipefail
+          status="${PACKAGER_GENERATION}/upstream-status.json"
+          "${PACKAGER_BIN}" stage \
+            --artifact "${PACKAGER_GENERATION}/source.zip" \
+            --signature "$(jq -r '.latest_release.artifact.ed25519_signature' "${status}")" \
+            --length "$(jq -r '.latest_release.artifact.length' "${status}")" \
+            --version "$(jq -r '.latest_release.version' "${status}")" \
+            --build "$(jq -r '.latest_release.build' "${status}")" \
+            --output "${PACKAGER_GENERATION}/stage" \
+            >"${PACKAGER_GENERATION}/stage.json"
+
+      - name: Inspect the authenticated compatibility boundary
+        run: |
+          set -euo pipefail
+          "${PACKAGER_BIN}" inspect-contract-source \
+            --stage "${PACKAGER_GENERATION}/stage" \
+            >"${PACKAGER_GENERATION}/contract-source.json"
+          jq -e \
+            --arg version '${{ inputs.version }}' \
+            --arg build '${{ inputs.build }}' \
+            '
+              .kind == "contract_source_inspection" and
+              .application.version == $version and
+              .application.build == $build and
+              (.codex_version | length > 0) and
+              (.ripgrep_version | test("^[0-9]+([.][0-9]+){2}$")) and
+              (.ripgrep_revision_prefix | test("^[0-9a-f]{10}$"))
+            ' "${PACKAGER_GENERATION}/contract-source.json" >/dev/null
+
+      - name: Resolve and cache exact official Linux inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source_json="${PACKAGER_GENERATION}/contract-source.json"
+          codex_version="$(jq -r '.codex_version' "${source_json}")"
+          ripgrep_version="$(jq -r '.ripgrep_version' "${source_json}")"
+          codex_tag="rust-v${codex_version}"
+          asset_name="codex-package-x86_64-unknown-linux-musl.tar.gz"
+
+          resolve_tag_revision() {
+            local repository="$1"
+            local tag="$2"
+            local object type sha
+            object="$(/usr/bin/gh api "repos/${repository}/git/ref/tags/${tag}")"
+            type="$(jq -r '.object.type' <<<"${object}")"
+            sha="$(jq -r '.object.sha' <<<"${object}")"
+            for _ in 1 2; do
+              [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]
+              if [[ "${type}" == "commit" ]]; then
+                printf '%s\n' "${sha}"
+                return 0
+              fi
+              [[ "${type}" == "tag" ]]
+              object="$(/usr/bin/gh api "repos/${repository}/git/tags/${sha}")"
+              type="$(jq -r '.object.type' <<<"${object}")"
+              sha="$(jq -r '.object.sha' <<<"${object}")"
+            done
+            return 1
+          }
+
+          codex_revision="$(resolve_tag_revision openai/codex "${codex_tag}")"
+          ripgrep_revision="$(resolve_tag_revision BurntSushi/ripgrep "${ripgrep_version}")"
+          [[ "${ripgrep_revision:0:10}" == "$(jq -r '.ripgrep_revision_prefix' "${source_json}")" ]]
+
+          release_json="${PACKAGER_GENERATION}/codex-release.json"
+          /usr/bin/gh api "repos/openai/codex/releases/tags/${codex_tag}" >"${release_json}"
+          jq -e --arg tag "${codex_tag}" '.tag_name == $tag' "${release_json}" >/dev/null
+          asset_json="$(
+            jq -c \
+              --arg name "${asset_name}" \
+              '[.assets[] | select(.name == $name)] |
+               if length == 1 then .[0] else error("exact asset is not unique") end' \
+              "${release_json}"
+          )"
+          asset_id="$(jq -r '.id' <<<"${asset_json}")"
+          asset_url="$(jq -r '.url' <<<"${asset_json}")"
+          asset_size="$(jq -r '.size' <<<"${asset_json}")"
+          asset_digest="$(jq -r '.digest' <<<"${asset_json}")"
+          [[ "${asset_id}" =~ ^[0-9]+$ ]]
+          [[ "${asset_url}" == https://api.github.com/repos/openai/codex/releases/assets/* ]]
+          [[ "${asset_size}" =~ ^[0-9]+$ ]]
+          (( asset_size > 0 && asset_size <= 167772160 ))
+          [[ "${asset_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          codex_directory="${PACKAGER_CACHE_ROOT}/codex-${codex_version}"
+          codex_package="${codex_directory}/${asset_name}"
+          mkdir --mode=0755 -- "${codex_directory}"
+          if [[ -e "${codex_package}" ]]; then
+            [[ -f "${codex_package}" && ! -L "${codex_package}" ]]
+            [[ "$(stat --format=%s "${codex_package}")" == "${asset_size}" ]]
+            [[ "sha256:$(sha256sum "${codex_package}" | cut -d ' ' -f 1)" == "${asset_digest}" ]]
+          else
+            temporary="$(mktemp --tmpdir="${codex_directory}" .codex-package.XXXXXXXXXX)"
+            cleanup_package() {
+              if [[ -f "${temporary}" && ! -L "${temporary}" ]]; then
+                unlink -- "${temporary}"
+              fi
+            }
+            trap cleanup_package EXIT HUP INT TERM
+            /usr/bin/gh api \
+              --header 'Accept: application/octet-stream' \
+              "repos/openai/codex/releases/assets/${asset_id}" >"${temporary}"
+            [[ "$(stat --format=%s "${temporary}")" == "${asset_size}" ]]
+            [[ "sha256:$(sha256sum "${temporary}" | cut -d ' ' -f 1)" == "${asset_digest}" ]]
+            chmod 0644 -- "${temporary}"
+            ln -- "${temporary}" "${codex_package}"
+            unlink -- "${temporary}"
+            trap - EXIT HUP INT TERM
+          fi
+          {
+            printf 'PACKAGER_CODEX_PACKAGE=%s\n' "${codex_package}"
+            printf 'PACKAGER_CODEX_REVISION=%s\n' "${codex_revision}"
+            printf 'PACKAGER_RIPGREP_REVISION=%s\n' "${ripgrep_revision}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Refresh and validate the runtime contract
+        id: contract
+        run: |
+          set -euo pipefail
+          contract="${PACKAGER_GENERATION}/runtime-contract.json"
+          "${PACKAGER_BIN}" refresh-runtime-contract \
+            --stage "${PACKAGER_GENERATION}/stage" \
+            --codex-package "${PACKAGER_CODEX_PACKAGE}" \
+            --codex-revision "${PACKAGER_CODEX_REVISION}" \
+            --ripgrep-revision "${PACKAGER_RIPGREP_REVISION}" \
+            --output "${contract}" \
+            >"${PACKAGER_GENERATION}/runtime-contract-refresh.json"
+          jq -e \
+            --arg version '${{ inputs.version }}' \
+            --arg build '${{ inputs.build }}' \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .application.version == $version and
+              .application.build == $build and
+              .target.os == "linux" and
+              .target.architecture == "x86_64"
+            ' "${contract}" >/dev/null
+          {
+            printf 'record=%s\n' "$(base64 --wrap=0 "${contract}")"
+            printf 'source_commit=%s\n' "${GITHUB_SHA}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Record retained local evidence
+        if: always()
+        run: |
+          {
+            printf '### Authenticated contract refresh\n\n'
+            printf -- '- Application: `%s` build `%s`\n' \
+              '${{ inputs.version }}' '${{ inputs.build }}'
+            printf -- '- Local generation: `%s`\n' \
+              "${PACKAGER_GENERATION:-not-allocated}"
+            printf -- '- Proprietary payload uploaded: `no`\n'
+            printf -- '- Compatibility boundary: `unchanged Electron/native contract required`\n'
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  record:
+    name: Commit the verified contract and dispatch rebuild
+    needs: refresh
+    runs-on: ubuntu-24.04
+    environment: automation-commit
+    timeout-minutes: 20
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Check out the current default branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: true
+          ssh-key: ${{ secrets.AUTOMATION_DEPLOY_KEY }}
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Validate and install only the verified contract
+        env:
+          CONTRACT_RECORD: ${{ needs.refresh.outputs.contract_record }}
+          SOURCE_COMMIT: ${{ needs.refresh.outputs.source_commit }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${SOURCE_COMMIT}" ]]
+          printf '%s' "${CONTRACT_RECORD}" | base64 --decode >data/runtime-contract.json
+          jq -e \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .application.version == $version and
+              .application.build == $build and
+              .target.os == "linux" and
+              .target.architecture == "x86_64"
+            ' data/runtime-contract.json >/dev/null
+          cargo test --locked \
+            --test runtime_contract \
+            --test upstream_monitor \
+            --test repository_boundary
+          [[ "$(git diff --name-only)" == "data/runtime-contract.json" ]]
+
+      - name: Commit directly and dispatch the isolated rebuild
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/runtime-contract.json
+          git commit -m "chore: refresh Codex ${REQUESTED_VERSION} runtime contract"
+          git push origin HEAD:refs/heads/"${DEFAULT_BRANCH}"
+          gh workflow run rebuild-candidate.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref "${DEFAULT_BRANCH}" \
+            --field "version=${REQUESTED_VERSION}" \
+            --field "build=${REQUESTED_BUILD}" \
+            --field "reason=stale_candidate"

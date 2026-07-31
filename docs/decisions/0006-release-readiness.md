@@ -1,6 +1,6 @@
 # Decision 0006: release readiness is an assessment, not an override
 
-- Status: accepted; legal-gate portion superseded by Decision 0008
+- Status: accepted; amended by Decisions 0008 and 0011
 - Date: 2026-07-30
 
 ## Decision
@@ -26,8 +26,9 @@ catalog entirely.
 ## Consequences
 
 The command exits successfully when an assessment is produced, even though
-`stable_publication_permitted` is false. Automation must inspect that field and
-must not equate command success with release approval.
+`stable_publication_permitted` is false. Decision 0011 adds a separate
+`automatic_publication_permitted` disposition for the seven implemented
+engineering gates; command success alone remains insufficient.
 
 A future mechanism for clearing external operational gates needs a separately
 designed, protected, signed evidence workflow and explicit user authorization.
@@ -40,3 +41,7 @@ redistribution and trademark/branding authority from the machine gate catalog.
 The assessment now reports only cataloged technical and operational gates and
 makes no legal determination. The remaining operational evidence still cannot
 be supplied through incidental boolean flags.
+
+[Decision 0011](0011-automatic-engineering-releases.md) permits a separately
+labeled automatic engineering channel after the seven implemented gates pass,
+while retaining the full catalog for any stable-support claim.

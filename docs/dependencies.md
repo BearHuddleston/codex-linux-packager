@@ -69,7 +69,7 @@ in phase provenance.
 
 ## Release-evidence tools
 
-The protected draft workflow invokes `cargo-deny list --format json --layout
+The protected automatic-release workflow invokes `cargo-deny list --format json --layout
 crate` through an absolute path and refuses it unless its complete executable
 SHA-256 matches `PACKAGER_CARGO_DENY_SHA256`. The command's documented output is
 a per-crate list of license information, not a preserved SPDX license

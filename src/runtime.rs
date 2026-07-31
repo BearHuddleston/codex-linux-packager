@@ -287,6 +287,13 @@ impl BinaryFormat {
 pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
     let contract: RuntimeContract = serde_json::from_str(CONTRACT_JSON)
         .map_err(|error| RuntimeError::Contract(error.to_string()))?;
+    validate_runtime_contract(&contract)?;
+    Ok(contract)
+}
+
+/// Validates a schema-1 runtime contract structurally and against the fixed
+/// Linux x86_64 native-ABI compatibility boundary.
+pub fn validate_runtime_contract(contract: &RuntimeContract) -> Result<(), RuntimeError> {
     if contract.schema != SCHEMA_VERSION || contract.producer != PRODUCER_IDENTIFIER {
         return Err(RuntimeError::Contract(
             "schema or producer differs from this Rust implementation".to_owned(),
@@ -297,18 +304,27 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
             "target is not exactly Linux x86_64".to_owned(),
         ));
     }
-    if contract.application.version != "26.727.40816"
-        || contract.application.build != "6067"
-        || contract.electron.version != "42.3.0"
-        || contract.codex.version != "0.146.0-alpha.9.2"
-        || contract.codex.release_tag != "rust-v0.146.0-alpha.9.2"
-        || contract.codex.revision != "86cc9f2177cad015befd595286d8767a650f7d13"
+    validate_numeric_version(&contract.application.version, "application version")?;
+    validate_decimal(&contract.application.build, 32, "application build")?;
+    validate_semver_identity(&contract.electron.version, "Electron version")?;
+    validate_semver_identity(&contract.codex.version, "Codex version")?;
+    validate_semver_identity(&contract.ripgrep.version, "ripgrep version")?;
+    if contract.codex.release_tag != format!("rust-v{}", contract.codex.version)
         || contract.codex.target != "x86_64-unknown-linux-musl"
-        || contract.ripgrep.version != "15.2.0"
-        || contract.ripgrep.revision != "e89fff89ac9af12e8d4ce9d5fd07beb408ca730f"
+        || !is_lower_hex_exact(&contract.codex.revision, 40)
+        || !is_lower_hex_exact(&contract.ripgrep.revision, 40)
     {
         return Err(RuntimeError::Contract(
-            "reviewed application/Electron/Codex/ripgrep identities differ".to_owned(),
+            "Codex or ripgrep release identity is invalid".to_owned(),
+        ));
+    }
+    let native = native_contract()
+        .map_err(|error| RuntimeError::Contract(format!("load native contract: {error}")))?;
+    if contract.electron.version != native.electron.version
+        || contract.electron.linux_x64_zip_sha256 != native.electron.linux_x64_zip_sha256
+    {
+        return Err(RuntimeError::Contract(
+            "Electron runtime differs from the reviewed native ABI contract".to_owned(),
         ));
     }
     for (value, label) in [
@@ -331,9 +347,12 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
     ] {
         validate_digest(value, label)?;
     }
-    if contract.codex.package_archive_bytes != 133_490_612 || contract.codex.components.len() != 6 {
+    if contract.codex.package_archive_bytes == 0
+        || contract.codex.package_archive_bytes > MAX_CODEX_PACKAGE_BYTES
+        || contract.codex.components.len() != 6
+    {
         return Err(RuntimeError::Contract(
-            "Codex package envelope differs from the reviewed release".to_owned(),
+            "Codex package envelope is outside its fixed bounds".to_owned(),
         ));
     }
     let mut archive_paths = BTreeSet::new();
@@ -372,6 +391,64 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
             }
         }
     }
+    let expected_components = BTreeMap::from([
+        (
+            "bin/codex",
+            (Some("resources/codex"), "included", Some("0755")),
+        ),
+        (
+            "bin/codex-code-mode-host",
+            (
+                Some("resources/codex-code-mode-host"),
+                "included",
+                Some("0755"),
+            ),
+        ),
+        (
+            "codex-package.json",
+            (
+                Some("resources/codex-package.json"),
+                "included",
+                Some("0644"),
+            ),
+        ),
+        (
+            "codex-path/rg",
+            (Some("resources/rg"), "included", Some("0755")),
+        ),
+        (
+            "codex-resources/bwrap",
+            (
+                Some("resources/codex-resources/bwrap"),
+                "included",
+                Some("0755"),
+            ),
+        ),
+        (
+            "codex-resources/zsh/bin/zsh",
+            (None, "omitted_glibc_2_38_optional_zsh", None),
+        ),
+    ]);
+    let observed_components = contract
+        .codex
+        .components
+        .iter()
+        .map(|component| {
+            (
+                component.archive_path.as_str(),
+                (
+                    component.runtime_path.as_deref(),
+                    component.disposition.as_str(),
+                    component.mode.as_deref(),
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    if observed_components != expected_components {
+        return Err(RuntimeError::Contract(
+            "Codex package inventory differs from the supported Linux layout".to_owned(),
+        ));
+    }
     if contract.authenticated_source_resources.len() != 3 {
         return Err(RuntimeError::Contract(
             "authenticated source resource set must contain three files".to_owned(),
@@ -400,8 +477,13 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
         .iter()
         .map(|source| (source.name.as_str(), source.identity_marker.as_deref()))
         .collect();
-    if marker_policy.get("codex") != Some(&Some("0.146.0-alpha.9.2"))
-        || marker_policy.get("rg") != Some(&Some("15.2.0e89fff89ac"))
+    let ripgrep_marker = format!(
+        "{}{}",
+        contract.ripgrep.version,
+        &contract.ripgrep.revision[..10]
+    );
+    if marker_policy.get("codex") != Some(&Some(contract.codex.version.as_str()))
+        || marker_policy.get("rg") != Some(&Some(ripgrep_marker.as_str()))
         || marker_policy.get("codex-code-mode-host") != Some(&None)
     {
         return Err(RuntimeError::Contract(
@@ -419,7 +501,7 @@ pub fn runtime_contract() -> Result<RuntimeContract, RuntimeError> {
             "Codex package ripgrep digest conflicts with its independent contract".to_owned(),
         ));
     }
-    Ok(contract)
+    Ok(())
 }
 
 /// Re-authenticates every input and publishes a deterministic runtime tree.
@@ -1344,7 +1426,7 @@ fn is_macho(bytes: &[u8]) -> bool {
     })
 }
 
-fn validate_macho_x86_64(bytes: &[u8], label: &str) -> Result<(), RuntimeError> {
+pub(crate) fn validate_macho_x86_64(bytes: &[u8], label: &str) -> Result<(), RuntimeError> {
     if bytes.len() < 32 || bytes.get(..4) != Some(b"\xcf\xfa\xed\xfe") {
         return Err(RuntimeError::Input(format!(
             "{label:?} is not thin little-endian 64-bit Mach-O"
@@ -1368,7 +1450,7 @@ fn validate_included_executable(format: &BinaryFormat, label: &str) -> Result<()
     Ok(())
 }
 
-fn read_regular_input(path: &Path, maximum: u64) -> Result<Vec<u8>, RuntimeError> {
+pub(crate) fn read_regular_input(path: &Path, maximum: u64) -> Result<Vec<u8>, RuntimeError> {
     let descriptor = open(
         path,
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
@@ -1637,13 +1719,63 @@ fn verify_sha256(bytes: &[u8], expected: &str, label: &str) -> Result<(), Runtim
 }
 
 fn validate_digest(value: &str, label: &str) -> Result<(), RuntimeError> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if !is_lower_hex_exact(value, 64) {
         return Err(RuntimeError::Contract(format!(
             "{label} SHA-256 is not canonical lowercase hexadecimal"
+        )));
+    }
+    Ok(())
+}
+
+fn is_lower_hex_exact(value: &str, bytes: usize) -> bool {
+    value.len() == bytes
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn validate_decimal(value: &str, maximum: usize, label: &str) -> Result<(), RuntimeError> {
+    if value.is_empty()
+        || value.len() > maximum
+        || (value.len() > 1 && value.starts_with('0'))
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(RuntimeError::Contract(format!(
+            "{label} is not bounded canonical decimal"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_numeric_version(value: &str, label: &str) -> Result<(), RuntimeError> {
+    if value.is_empty()
+        || value.len() > 64
+        || value.starts_with('.')
+        || value.ends_with('.')
+        || value.split('.').count() < 2
+    {
+        return Err(RuntimeError::Contract(format!(
+            "{label} is not a bounded dotted numeric version"
+        )));
+    }
+    for component in value.split('.') {
+        validate_decimal(component, 16, label)?;
+    }
+    Ok(())
+}
+
+fn validate_semver_identity(value: &str, label: &str) -> Result<(), RuntimeError> {
+    if value.is_empty()
+        || value.len() > 128
+        || value.starts_with('.')
+        || value.ends_with('.')
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+        || !value.bytes().any(|byte| byte.is_ascii_digit())
+    {
+        return Err(RuntimeError::Contract(format!(
+            "{label} is not a bounded release identity"
         )));
     }
     Ok(())

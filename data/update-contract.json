@@ -2,7 +2,7 @@
   "schema": 1,
   "producer": "io.github.bearhuddleston.codex-linux-packager.rust",
   "kind": "linux_x86_64_update_contract",
-  "channel": "stable",
+  "channel": "automatic",
   "target": "linux-x86_64",
   "manifest_url": "https://github.com/BearHuddleston/codex-linux-packager/releases/latest/download/codex-linux-x86_64-update.json",
   "release_repository": "BearHuddleston/codex-linux-packager",

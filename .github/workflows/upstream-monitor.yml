@@ -20,13 +20,9 @@ env:
 
 jobs:
   inspect:
-    name: Compare feed, contract, and candidate
+    name: Compare feed, contract, candidate, and public release
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      action: ${{ steps.status.outputs.action }}
-      version: ${{ steps.status.outputs.version }}
-      build: ${{ steps.status.outputs.build }}
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -38,6 +34,8 @@ jobs:
 
       - name: Inspect official upstream
         id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           status_json="${RUNNER_TEMP}/upstream-status.json"
@@ -52,60 +50,86 @@ jobs:
             (.latest_release.version | test("^[0-9]+([.][0-9]+)+$")) and
             (.latest_release.build | test("^[0-9]+$"))
           ' "${status_json}" >/dev/null
+          action="$(jq -r '.action' "${status_json}")"
+          version="$(jq -r '.latest_release.version' "${status_json}")"
+          build="$(jq -r '.latest_release.build' "${status_json}")"
+          release_tag="codex-app-${version}-${build}"
+          release_exists=false
+          if gh release view "${release_tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft,isPrerelease,tagName \
+            --jq '(.tagName == "'"${release_tag}"'") and
+                  (.isDraft == false) and
+                  (.isPrerelease == false)' |
+            grep -qx true
+          then
+            release_exists=true
+          fi
           {
-            printf 'action=%s\n' "$(jq -r '.action' "${status_json}")"
-            printf 'version=%s\n' "$(jq -r '.latest_release.version' "${status_json}")"
-            printf 'build=%s\n' "$(jq -r '.latest_release.build' "${status_json}")"
+            printf 'action=%s\n' "${action}"
+            printf 'version=%s\n' "${version}"
+            printf 'build=%s\n' "${build}"
             printf 'feed_sha256=%s\n' "$(jq -r '.feed_sha256' "${status_json}")"
+            printf 'release_tag=%s\n' "${release_tag}"
+            printf 'release_exists=%s\n' "${release_exists}"
           } >>"${GITHUB_OUTPUT}"
 
       - name: Record monitor result
         run: |
           {
-            printf '### Codex upstream monitor\n\n'
+            printf '### Codex automatic release monitor\n\n'
             printf -- '- Action: `%s`\n' '${{ steps.status.outputs.action }}'
             printf -- '- Latest application: `%s` build `%s`\n' \
               '${{ steps.status.outputs.version }}' \
               '${{ steps.status.outputs.build }}'
             printf -- '- Feed SHA-256: `%s`\n' '${{ steps.status.outputs.feed_sha256 }}'
-            printf -- '- Trusted rebuild enabled: `%s`\n' \
-              '${{ vars.TRUSTED_REBUILD_ENABLED }}'
+            printf -- '- Public release exists: `%s`\n' \
+              '${{ steps.status.outputs.release_exists }}'
+            printf -- '- Automatic release enabled: `%s`\n' \
+              '${{ vars.AUTOMATIC_RELEASE_ENABLED }}'
           } >>"${GITHUB_STEP_SUMMARY}"
 
-      - name: Create or update the upstream action issue
-        if: steps.status.outputs.action != 'current'
+      - name: Create or update the automatic-release issue
+        if: >-
+          steps.status.outputs.action != 'current' ||
+          steps.status.outputs.release_exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ steps.status.outputs.action }}
           VERSION: ${{ steps.status.outputs.version }}
           BUILD: ${{ steps.status.outputs.build }}
           FEED_SHA256: ${{ steps.status.outputs.feed_sha256 }}
-          TRUSTED_REBUILD_ENABLED: ${{ vars.TRUSTED_REBUILD_ENABLED }}
+          RELEASE_EXISTS: ${{ steps.status.outputs.release_exists }}
+          AUTOMATIC_RELEASE_ENABLED: ${{ vars.AUTOMATIC_RELEASE_ENABLED }}
         run: |
           set -euo pipefail
           gh label create upstream-update \
             --repo "${GITHUB_REPOSITORY}" \
             --color d93f0b \
-            --description "Official Codex feed requires reviewed packaging action" \
+            --description "Official Codex feed requires automatic packaging action" \
             --force
           title="[upstream] Codex ${VERSION} build ${BUILD}"
           body_file="${RUNNER_TEMP}/upstream-issue.md"
           {
-            printf 'The hourly exact-origin HTTPS feed monitor reports `%s`.\n\n' "${ACTION}"
+            printf 'The hourly exact-origin HTTPS monitor reports `%s`.\n\n' "${ACTION}"
             printf -- '- Version: `%s`\n' "${VERSION}"
             printf -- '- Build: `%s`\n' "${BUILD}"
             printf -- '- Feed SHA-256: `%s`\n' "${FEED_SHA256}"
-            printf -- '- Trusted rebuild enabled: `%s`\n\n' \
-              "${TRUSTED_REBUILD_ENABLED:-false}"
+            printf -- '- Matching public release exists: `%s`\n' "${RELEASE_EXISTS}"
+            printf -- '- Automatic release enabled: `%s`\n\n' \
+              "${AUTOMATIC_RELEASE_ENABLED:-false}"
             if [[ "${ACTION}" == "review_contract_update" ]]; then
               printf '%s\n' \
-                'Authenticate the new source, reconcile every independently pinned contract, prepare the trusted cache, and merge the reviewed contract update. The feed cannot authorize its own dependencies.'
+                'Automation will authenticate the new artifact and refresh only a compatible Electron/native contract. Incompatible changes fail closed.'
+            elif [[ "${RELEASE_EXISTS}" != "true" ]]; then
+              printf '%s\n' \
+                'The contract is current but the public release is absent. Automation will perform a fresh full rebuild before publication.'
             else
               printf '%s\n' \
-                'The reviewed contract is current and the recorded candidate is stale. The isolated trusted-runner rebuild is the permitted next action.'
+                'The contract is current and the recorded candidate is stale. Automation will perform a fresh full rebuild.'
             fi
             printf '\n%s\n' \
-              'This issue is monitoring evidence only. It does not grant redistribution, trademark, signing, or publication approval.'
+              'Published output is an unofficial automatic engineering release, not stable support or OpenAI affiliation.'
           } >"${body_file}"
           issue_number="$(
             gh issue list \
@@ -130,7 +154,9 @@ jobs:
           fi
 
       - name: Close resolved upstream issues
-        if: steps.status.outputs.action == 'current'
+        if: >-
+          steps.status.outputs.action == 'current' &&
+          steps.status.outputs.release_exists == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -145,39 +171,61 @@ jobs:
             [[ -z "${issue_number}" ]] && continue
             gh issue close "${issue_number}" \
               --repo "${GITHUB_REPOSITORY}" \
-              --comment "Resolved: feed, reviewed contract, and recorded engineering candidate now agree."
+              --comment "Resolved: feed, authenticated contract, rebuilt candidate, and public automatic engineering release agree."
           done
 
-      - name: Dispatch the isolated trusted rebuild
-        if: >-
-          steps.status.outputs.action == 'rebuild_candidate' &&
-          vars.TRUSTED_REBUILD_ENABLED == 'true'
+      - name: Dispatch the required automatic action
+        if: vars.AUTOMATIC_RELEASE_ENABLED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ steps.status.outputs.action }}
           VERSION: ${{ steps.status.outputs.version }}
           BUILD: ${{ steps.status.outputs.build }}
+          RELEASE_EXISTS: ${{ steps.status.outputs.release_exists }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          active="$(
-            gh run list \
+          active=0
+          for workflow in \
+            refresh-contract.yml \
+            rebuild-candidate.yml \
+            release-draft.yml
+          do
+            count="$(
+              gh run list \
+                --repo "${GITHUB_REPOSITORY}" \
+                --workflow "${workflow}" \
+                --limit 30 \
+                --json status \
+                --jq '[.[] | select(.status == "queued" or
+                                   .status == "in_progress" or
+                                   .status == "waiting" or
+                                   .status == "pending")] | length'
+            )"
+            active=$((active + count))
+          done
+          if (( active != 0 )); then
+            exit 0
+          fi
+
+          if [[ "${ACTION}" == "review_contract_update" ]]; then
+            gh workflow run refresh-contract.yml \
               --repo "${GITHUB_REPOSITORY}" \
-              --workflow rebuild-candidate.yml \
-              --limit 30 \
-              --json status \
-              --jq '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending")] | length'
-          )"
-          open_candidate_prs="$(
-            gh pr list \
-              --repo "${GITHUB_REPOSITORY}" \
-              --state open \
-              --label engineering-candidate \
-              --json number \
-              --jq 'length'
-          )"
-          if [[ "${active}" == "0" && "${open_candidate_prs}" == "0" ]]; then
-            gh workflow run rebuild-candidate.yml \
-              --repo "${GITHUB_REPOSITORY}" \
-              --ref "${GITHUB_REF_NAME}" \
+              --ref "${DEFAULT_BRANCH}" \
               --field "version=${VERSION}" \
               --field "build=${BUILD}"
+          elif [[ "${ACTION}" == "rebuild_candidate" ]]; then
+            gh workflow run rebuild-candidate.yml \
+              --repo "${GITHUB_REPOSITORY}" \
+              --ref "${DEFAULT_BRANCH}" \
+              --field "version=${VERSION}" \
+              --field "build=${BUILD}" \
+              --field "reason=stale_candidate"
+          elif [[ "${ACTION}" == "current" && "${RELEASE_EXISTS}" != "true" ]]; then
+            gh workflow run rebuild-candidate.yml \
+              --repo "${GITHUB_REPOSITORY}" \
+              --ref "${DEFAULT_BRANCH}" \
+              --field "version=${VERSION}" \
+              --field "build=${BUILD}" \
+              --field "reason=missing_release"
           fi

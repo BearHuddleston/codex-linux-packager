@@ -10,6 +10,9 @@ use codex_linux_packager::appdir::{AppDirRequest, build_appdir};
 use codex_linux_packager::appimage::{AppImageRequest, LaunchBackend, pack_appimage};
 use codex_linux_packager::archive::{ArtifactContract, ArtifactTrust, inspect_artifact_file};
 use codex_linux_packager::cli::{ArtifactArguments, Cli, LaunchBackendArgument, PackagingCommand};
+use codex_linux_packager::contract_refresh::{
+    ContractRefreshRequest, inspect_contract_source, refresh_runtime_contract,
+};
 use codex_linux_packager::download::{acquire_official_artifact, download_official_feed};
 use codex_linux_packager::extract::extract_stage;
 use codex_linux_packager::feed::{
@@ -57,6 +60,31 @@ fn run() -> anyhow::Result<ExitCode> {
                     .map_err(|error| ErrorDocument::new("upstream_check_failed", error.to_string()))
             });
             emit_result(result, "upstream check")
+        }
+        PackagingCommand::InspectContractSource { stage } => {
+            let result = inspect_contract_source(stage).map_err(|error| {
+                ErrorDocument::new("contract_source_inspection_failed", error.to_string())
+            });
+            emit_result(result, "contract source inspection")
+        }
+        PackagingCommand::RefreshRuntimeContract {
+            stage,
+            codex_package,
+            codex_revision,
+            ripgrep_revision,
+            output,
+        } => {
+            let request = ContractRefreshRequest {
+                stage: stage.clone(),
+                codex_package: codex_package.clone(),
+                codex_revision: codex_revision.clone(),
+                ripgrep_revision: ripgrep_revision.clone(),
+                output: output.clone(),
+            };
+            let result = refresh_runtime_contract(&request).map_err(|error| {
+                ErrorDocument::new("runtime_contract_refresh_failed", error.to_string())
+            });
+            emit_result(result, "runtime contract refresh")
         }
         PackagingCommand::AcquireArtifact {
             url,
