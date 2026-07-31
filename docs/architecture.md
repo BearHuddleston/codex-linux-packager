@@ -205,10 +205,12 @@ bypass only to deploy-key pushes. Payload-handling and signing jobs never
 receive that key.
 
 After a complete fresh rebuild, a read-only `release-signing` job receives the
-protected seed and prepares exact signed evidence. A separate keyless
-`release-draft` job receives repository write permission, creates the public
-nonprerelease latest release, redownloads all ten assets, and verifies them
-again. The historical workflow/job name does not imply draft visibility.
+protected seed and prepares exact signed evidence. A payload-free GitHub-hosted
+job then uses the scoped deploy key to create or verify the exact source tag.
+A separate keyless `release-draft` job receives API release-write permission,
+attaches the public nonprerelease latest release to that tag, redownloads all
+ten assets, and verifies them again. The historical workflow/job name does not
+imply draft visibility.
 
 ## Process and filesystem safety
 

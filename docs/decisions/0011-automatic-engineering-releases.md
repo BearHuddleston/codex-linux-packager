@@ -56,6 +56,12 @@ write job re-verifies the exact handoff, creates a public nonprerelease latest
 release, redownloads all assets, and verifies them again. Environment reviewer
 pauses are not required for the automatic channel.
 
+After signing succeeds, a separate payload-free job uses the scoped deploy key
+to create or verify the exact lightweight source tag. This avoids asking the
+GitHub Actions API token to create a ref that points at a commit containing
+workflow changes. The publication job receives neither the deploy key nor the
+signing seed.
+
 Generated runtime-contract and candidate-record commits use one dedicated
 write deploy key scoped to an `automation-commit` environment. The default
 branch ruleset continues to require canonical checks for ordinary changes and

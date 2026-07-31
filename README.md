@@ -146,9 +146,10 @@ Linux dependencies.
 
 The trusted payload job has read-only repository permission and no persisted
 checkout credential. Only compact verified JSON crosses to a GitHub-hosted
-write job. Signing and repository-release authority are separate jobs: the
-signing job receives the Ed25519 seed but cannot write the repository; the
-publication job can create the release but never receives the seed.
+write job. Signing, exact-tag creation, and repository-release authority are
+separate jobs: the signing job receives the Ed25519 seed but cannot write the
+repository, the payload-free tag job receives only the scoped deploy key, and
+the publication job can create the release but receives neither secret.
 
 Operational details and required runner variables are in
 [`docs/automated-rebuilds.md`](docs/automated-rebuilds.md).

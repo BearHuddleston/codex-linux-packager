@@ -242,9 +242,68 @@ jobs:
             printf -- '- Repository write authority in signing job: `no`\n'
           } >>"${GITHUB_STEP_SUMMARY}"
 
+  tag:
+    name: Create the exact signed-candidate tag
+    needs: sign
+    runs-on: ubuntu-24.04
+    environment: automation-commit
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out with the scoped tag key
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ssh-key: ${{ secrets.AUTOMATION_DEPLOY_KEY }}
+
+      - name: Create or verify the exact release tag
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          [[ "${REQUESTED_VERSION}" =~ ^[0-9]+([.][0-9]+)+$ ]]
+          [[ "${REQUESTED_BUILD}" =~ ^[0-9]+$ ]]
+          [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${SOURCE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "${SOURCE_COMMIT}" "origin/${GITHUB_REF_NAME}"
+          jq -e \
+            --arg version "${REQUESTED_VERSION}" \
+            --arg build "${REQUESTED_BUILD}" \
+            --arg source_commit "${SOURCE_COMMIT}" \
+            '
+              .schema == 1 and
+              .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
+              .kind == "engineering_candidate_record" and
+              .application.version == $version and
+              .application.build == $build and
+              .source_commit == $source_commit and
+              .engineering_candidate == true and
+              .automatic_publication_permitted == true and
+              .stable_publication_permitted == false
+            ' data/engineering-candidate.json >/dev/null
+          RELEASE_TAG="codex-app-${REQUESTED_VERSION}-${REQUESTED_BUILD}"
+          mapfile -t remote_tags < <(
+            git ls-remote --refs origin "refs/tags/${RELEASE_TAG}"
+          )
+          if [[ "${#remote_tags[@]}" == 0 ]]; then
+            git tag "${RELEASE_TAG}" "${SOURCE_COMMIT}"
+            git push origin "refs/tags/${RELEASE_TAG}"
+            mapfile -t remote_tags < <(
+              git ls-remote --refs origin "refs/tags/${RELEASE_TAG}"
+            )
+          fi
+          [[ "${#remote_tags[@]}" == 1 ]]
+          read -r remote_target remote_ref <<<"${remote_tags[0]}"
+          [[ "${remote_ref}" == "refs/tags/${RELEASE_TAG}" ]]
+          [[ "${remote_target}" == "${SOURCE_COMMIT}" ]]
+
   draft:
     name: Create and redownload the public engineering release
-    needs: sign
+    needs: [sign, tag]
     runs-on: [self-hosted, linux, x64, codex-packager-trusted]
     environment: release-draft
     timeout-minutes: 45
