@@ -132,7 +132,9 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "release-attestation.json",
         "third-party-notices.json",
         "SHA256SUMS",
-        ".assessment_scope == $candidate[0].assessment_scope",
+        ".assessment_scope == $candidate.assessment_scope",
+        "candidate_record=\"$(jq -c . data/engineering-candidate.json)\"",
+        "--argjson candidate \"${candidate_record}\"",
         "EXPECTED_ARTIFACT_SHA256",
         "EXPECTED_ARTIFACT_BYTES",
         "EXPECTED_APPDIR_SHA256",
@@ -160,6 +162,7 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "actions/download-artifact",
         "--draft",
         "--prerelease",
+        "--slurpfile candidate data/engineering-candidate.json",
     ] {
         assert!(
             !workflow.contains(forbidden),
@@ -170,6 +173,16 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
     let draft_job = workflow
         .find("\n  draft:\n")
         .expect("draft job must be separate");
+    let candidate_snapshot = workflow
+        .find("candidate_record=\"$(jq -c . data/engineering-candidate.json)\"")
+        .expect("validated candidate must be snapshotted");
+    let source_checkout = workflow
+        .find("git switch --detach \"${SOURCE_COMMIT}\"")
+        .expect("source checkout must be explicit");
+    assert!(
+        candidate_snapshot < source_checkout,
+        "candidate state must be captured before switching to the build commit"
+    );
     assert!(
         workflow[..draft_job].contains("contents: read"),
         "signing job must have read-only repository permission"
