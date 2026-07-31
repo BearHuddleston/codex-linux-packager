@@ -90,10 +90,10 @@ publication authorization.
   exact-commit/tree/lockfile/asset attestation. Stable approval still requires
   independent review bound to one frozen set.
 - **Protected automation:** hourly monitoring, compatibility-bounded contract
-  refresh, trusted rebuild, scoped signing, public release, and redownload
-  verification are implemented. The automatic chain deliberately has no human
-  approval pause; a stable channel would require a separately reviewed
-  protection and recovery policy.
+  refresh, trusted rebuild, scoped signing, private-draft redownload
+  verification, and post-verification public commit are implemented. The
+  automatic chain deliberately has no human approval pause; a stable channel
+  would require a separately reviewed protection and recovery policy.
 - **Complete platform matrix:** host Wayland/X11 extract-and-run and a
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.

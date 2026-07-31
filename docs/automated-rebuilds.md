@@ -177,9 +177,12 @@ The `release-draft` job:
 - keylessly verifies the retained handoff;
 - refuses to replace an existing release while consuming the exact
   pre-created tag;
-- creates a public, non-prerelease release marked latest;
-- redownloads exactly ten expected assets; and
-- keylessly verifies every redownloaded byte and signed relationship.
+- uploads exactly ten expected assets to a private draft;
+- redownloads the draft, restores the intended executable mode that GitHub's
+  asset transport does not preserve, and keylessly verifies every byte and
+  signed relationship; and
+- publishes the already-verified draft as the public, non-prerelease latest
+  release.
 
 Environment reviewer approvals are optional policy, not a correctness
 dependency. Fully automatic operation uses environment secret scoping without
@@ -250,10 +253,19 @@ deterministic packaging pass remain offline.
 
 ## Failure and retry behavior
 
-Any failure leaves the public release unchanged. The retained private
-generation is preserved for diagnosis. Digest state is written only after the
-corresponding trusted job succeeds, and each GitHub-hosted writer refuses to
-commit if the default branch advanced.
+Any precommit failure leaves the public release unchanged. An ordinary failure
+after private release creation deletes only the exact draft ID created by that
+run after rechecking its tag, source commit, and draft state; it never deletes
+the source tag. A runner crash can leave that draft private for diagnosis, but
+cannot expose its assets as a public release. The retained generation is
+preserved. Digest state is written only after the corresponding trusted job
+succeeds, and each GitHub-hosted writer refuses to commit if the default branch
+advanced.
+
+Publishing the verified draft is the GitHub commit boundary. A lost response
+after that API transition can make the workflow report failure even though the
+correct release is already public; the next monitor pass observes the exact
+non-draft tag instead of replacing it.
 
 The hourly monitor retries once no refresh, rebuild, or release run is active.
 It never promotes an old candidate merely because its version matches.
