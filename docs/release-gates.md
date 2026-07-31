@@ -98,9 +98,12 @@ publication authorization.
   controlled X11 baseline pass, but KDE and GNOME, Wayland and X11, FUSE and
   extract-and-run, and sandbox behavior are not all covered as a matrix.
 - **Rollback and recovery:** runtime AppImage activation has synthetic
-  atomic-exchange, rollback-retention, collision, and symlink tests. The
-  intended GitHub publication system still has no reviewed rollback/recovery
-  exercise.
+  atomic-exchange, rollback-retention, collision, and symlink tests. The first
+  public-release attempt was recovered by removing only its exact failed
+  release record while preserving the tag and retained candidate, after which
+  the same bytes published successfully. The current private-draft cleanup
+  path and signing-key recovery still need deliberate fault injection and
+  independent review before stable approval.
 - **Frozen independent review:** no independent approval is bound to the exact
   candidate source and artifact bytes.
 

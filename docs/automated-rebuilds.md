@@ -219,6 +219,13 @@ Required environment secret:
 | `release-signing` | `UPDATE_SIGNING_SEED_BASE64`, exactly one base64-encoded 32-byte Ed25519 seed |
 | `release-draft` | `RELEASE_GITHUB_TOKEN`, a fine-grained token limited to this repository with `Contents: Read and write`; available only to the publication job |
 
+The live repository was bootstrapped with the repository owner's existing
+GitHub CLI OAuth credential because GitHub rejected release creation by the
+built-in Actions token despite job-level `contents: write`. That credential
+has broader account-level repository authority than the contract above and is
+temporary credential debt. Rotate `RELEASE_GITHUB_TOKEN` to the documented
+repository-limited fine-grained token; no workflow change is required.
+
 `main` is protected by a branch ruleset requiring the canonical CI and MSRV
 checks for ordinary changes. The ruleset grants bypass only to repository
 deploy-key pushes so the two generated-state commits do not need to weaken
