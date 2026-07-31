@@ -161,11 +161,20 @@ The `release-signing` job:
   attestation; and
 - keylessly verifies the complete local set.
 
+After signing succeeds, the payload-free `tag` job:
+
+- runs on GitHub-hosted infrastructure;
+- receives only the `automation-commit` deploy key;
+- revalidates the committed candidate and exact source ancestry; and
+- creates the exact lightweight release tag, or accepts it only when it
+  already resolves to the same source commit.
+
 The `release-draft` job:
 
 - has `contents: write` but no signing seed;
 - keylessly verifies the retained handoff;
-- refuses to replace an existing release tag;
+- refuses to replace an existing release while consuming the exact
+  pre-created tag;
 - creates a public, non-prerelease release marked latest;
 - redownloads exactly ten expected assets; and
 - keylessly verifies every redownloaded byte and signed relationship.
@@ -173,7 +182,9 @@ The `release-draft` job:
 Environment reviewer approvals are optional policy, not a correctness
 dependency. Fully automatic operation uses environment secret scoping without
 required reviewers. The signing/write authority split and all fail-closed
-cryptographic and runtime checks remain mandatory.
+cryptographic and runtime checks remain mandatory. The signing job never
+receives the tag key, and the tag and publication jobs never receive the
+signing seed.
 
 ## Required runner configuration
 

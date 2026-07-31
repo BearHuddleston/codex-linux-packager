@@ -121,7 +121,12 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "sign-update",
         "prepare-release",
         "verify-release",
+        "\n  tag:\n",
+        "environment: automation-commit",
+        "ssh-key: ${{ secrets.AUTOMATION_DEPLOY_KEY }}",
+        "git push origin \"refs/tags/${RELEASE_TAG}\"",
         "environment: release-draft",
+        "needs: [sign, tag]",
         "needs: sign",
         "contents: write",
         "gh release create",
@@ -170,6 +175,9 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         );
     }
 
+    let tag_job = workflow
+        .find("\n  tag:\n")
+        .expect("release-tag job must be separate");
     let draft_job = workflow
         .find("\n  draft:\n")
         .expect("draft job must be separate");
@@ -184,8 +192,22 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "candidate state must be captured before switching to the build commit"
     );
     assert!(
-        workflow[..draft_job].contains("contents: read"),
+        tag_job < draft_job,
+        "the exact tag must exist before public release creation"
+    );
+    assert!(
+        workflow[..tag_job].contains("contents: read"),
         "signing job must have read-only repository permission"
+    );
+    assert!(
+        workflow[tag_job..draft_job].contains("contents: read")
+            && !workflow[tag_job..draft_job].contains("contents: write"),
+        "the tag job must push only with its scoped deploy key"
+    );
+    assert!(
+        !workflow[..tag_job].contains("AUTOMATION_DEPLOY_KEY")
+            && !workflow[draft_job..].contains("AUTOMATION_DEPLOY_KEY"),
+        "only the payload-free tag job may receive the automation deploy key"
     );
     assert!(
         !workflow[draft_job..].contains("UPDATE_SIGNING_SEED_BASE64"),
