@@ -90,6 +90,7 @@ jobs:
               .stable_publication_permitted == false and
               .release_status == "automatic_engineering_publication_permitted_not_stable_approval"
             ' data/engineering-candidate.json >/dev/null
+          candidate_record="$(jq -c . data/engineering-candidate.json)"
           git cat-file -e "${SOURCE_COMMIT}^{commit}"
           git merge-base --is-ancestor "${SOURCE_COMMIT}" "origin/${DEFAULT_BRANCH}"
           git switch --detach "${SOURCE_COMMIT}"
@@ -109,23 +110,33 @@ jobs:
             [[ -f "${path}" ]]
             [[ ! -L "${path}" ]]
           done
-          EXPECTED_ARTIFACT_SHA256="$(jq -r '.assessment_scope.artifact_sha256' data/engineering-candidate.json)"
-          EXPECTED_ARTIFACT_BYTES="$(jq -r '.assessment_scope.artifact_bytes' data/engineering-candidate.json)"
-          EXPECTED_APPDIR_SHA256="$(jq -r '.assessment_scope.appdir_manifest_sha256' data/engineering-candidate.json)"
-          EXPECTED_PROVENANCE_SHA256="$(jq -r '.assessment_scope.appimage_provenance_sha256' data/engineering-candidate.json)"
-          EXPECTED_CARGO_LOCK_SHA256="$(jq -r '.assessment_scope.cargo_lock_sha256' data/engineering-candidate.json)"
+          EXPECTED_ARTIFACT_SHA256="$(
+            jq -r '.assessment_scope.artifact_sha256' <<<"${candidate_record}"
+          )"
+          EXPECTED_ARTIFACT_BYTES="$(
+            jq -r '.assessment_scope.artifact_bytes' <<<"${candidate_record}"
+          )"
+          EXPECTED_APPDIR_SHA256="$(
+            jq -r '.assessment_scope.appdir_manifest_sha256' <<<"${candidate_record}"
+          )"
+          EXPECTED_PROVENANCE_SHA256="$(
+            jq -r '.assessment_scope.appimage_provenance_sha256' <<<"${candidate_record}"
+          )"
+          EXPECTED_CARGO_LOCK_SHA256="$(
+            jq -r '.assessment_scope.cargo_lock_sha256' <<<"${candidate_record}"
+          )"
           [[ "$(sha256sum "${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage" | cut -d ' ' -f 1)" == "${EXPECTED_ARTIFACT_SHA256}" ]]
           [[ "$(stat --format=%s "${candidate_root}/appimage/codex-desktop-unofficial-x86_64.AppImage")" == "${EXPECTED_ARTIFACT_BYTES}" ]]
           [[ "$(sha256sum "${candidate_root}/evidence/appdir-a.json" | cut -d ' ' -f 1)" == "${EXPECTED_APPDIR_SHA256}" ]]
           [[ "$(sha256sum "${candidate_root}/appimage/provenance.json" | cut -d ' ' -f 1)" == "${EXPECTED_PROVENANCE_SHA256}" ]]
           [[ "$(sha256sum Cargo.lock | cut -d ' ' -f 1)" == "${EXPECTED_CARGO_LOCK_SHA256}" ]]
           jq -e \
-            --slurpfile candidate data/engineering-candidate.json \
+            --argjson candidate "${candidate_record}" \
             '
               .schema == 1 and
               .producer == "io.github.bearhuddleston.codex-linux-packager.rust" and
               .kind == "release_readiness_assessment" and
-              .assessment_scope == $candidate[0].assessment_scope and
+              .assessment_scope == $candidate.assessment_scope and
               .engineering_candidate == true and
               .automatic_publication_permitted == true and
               .stable_publication_permitted == false and
