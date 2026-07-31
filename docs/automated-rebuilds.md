@@ -1,8 +1,9 @@
 # Automatic releases
 
 The repository separates public monitoring, proprietary source handling,
-digest-state writes, protected signing, and GitHub release writes. A single job
-never receives both the update-signing seed and repository write authority.
+digest-state writes, protected signing, exact-tag creation, and GitHub release
+publication. No job receives more than one of the signing seed, tag deploy key,
+or release API credential.
 
 The automatic channel publishes only Linux x86_64 engineering releases. It
 does not claim stable support or OpenAI affiliation.
@@ -171,7 +172,8 @@ After signing succeeds, the payload-free `tag` job:
 
 The `release-draft` job:
 
-- has `contents: write` but no signing seed;
+- leaves the built-in `GITHUB_TOKEN` read-only;
+- receives only `RELEASE_GITHUB_TOKEN` from the `release-draft` environment;
 - keylessly verifies the retained handoff;
 - refuses to replace an existing release while consuming the exact
   pre-created tag;
@@ -181,10 +183,8 @@ The `release-draft` job:
 
 Environment reviewer approvals are optional policy, not a correctness
 dependency. Fully automatic operation uses environment secret scoping without
-required reviewers. The signing/write authority split and all fail-closed
-cryptographic and runtime checks remain mandatory. The signing job never
-receives the tag key, and the tag and publication jobs never receive the
-signing seed.
+required reviewers. The three-way signing/tag/publication authority split and
+all fail-closed cryptographic and runtime checks remain mandatory.
 
 ## Required runner configuration
 
@@ -214,13 +214,15 @@ Required environment secret:
 | --- | --- |
 | `automation-commit` | `AUTOMATION_DEPLOY_KEY`, one dedicated repository deploy key with write access; available only to the two GitHub-hosted digest-state jobs |
 | `release-signing` | `UPDATE_SIGNING_SEED_BASE64`, exactly one base64-encoded 32-byte Ed25519 seed |
+| `release-draft` | `RELEASE_GITHUB_TOKEN`, a fine-grained token limited to this repository with `Contents: Read and write`; available only to the publication job |
 
 `main` is protected by a branch ruleset requiring the canonical CI and MSRV
 checks for ordinary changes. The ruleset grants bypass only to repository
 deploy-key pushes so the two generated-state commits do not need to weaken
-human branch protection. The dedicated private key is stored only in the
-`automation-commit` environment; payload-handling and release-signing jobs
-never receive it.
+human branch protection. The deploy key, signing seed, and release API token
+are stored in three different environments. The release workflow keeps its
+built-in `GITHUB_TOKEN` read-only; it never uses that token as an implicit
+publication fallback.
 
 The runner also needs stable Rust, Node.js at least 22.12.0, npm,
 noninteractive access to the reviewed OCI runtime, valid Wayland/X11 sessions,

@@ -128,7 +128,7 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
         "environment: release-draft",
         "needs: [sign, tag]",
         "needs: sign",
-        "contents: write",
+        "GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}",
         "gh release create",
         "--latest",
         "codex-desktop-unofficial-x86_64.AppImage",
@@ -212,6 +212,26 @@ fn automatic_public_release_separates_signing_from_repository_write_authority() 
     assert!(
         !workflow[draft_job..].contains("UPDATE_SIGNING_SEED_BASE64"),
         "repository-write job must not receive the release-signing seed"
+    );
+    assert!(
+        workflow[draft_job..].contains("contents: read")
+            && !workflow[draft_job..].contains("contents: write"),
+        "the publication job must not grant write authority to GITHUB_TOKEN"
+    );
+    assert!(
+        !workflow[..draft_job].contains("RELEASE_GITHUB_TOKEN"),
+        "only the publication job may receive the release API credential"
+    );
+    assert_eq!(
+        workflow
+            .matches("GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}")
+            .count(),
+        2,
+        "release creation and redownload inspection must use the scoped credential"
+    );
+    assert!(
+        !workflow[draft_job..].contains("GH_TOKEN: ${{ github.token }}"),
+        "publication must not fall back to the rejected workflow token"
     );
 }
 

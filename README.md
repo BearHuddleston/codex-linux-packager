@@ -149,7 +149,8 @@ checkout credential. Only compact verified JSON crosses to a GitHub-hosted
 write job. Signing, exact-tag creation, and repository-release authority are
 separate jobs: the signing job receives the Ed25519 seed but cannot write the
 repository, the payload-free tag job receives only the scoped deploy key, and
-the publication job can create the release but receives neither secret.
+the publication job receives only an environment-scoped release API
+credential—never the signing seed or deploy key.
 
 Operational details and required runner variables are in
 [`docs/automated-rebuilds.md`](docs/automated-rebuilds.md).
