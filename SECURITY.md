@@ -32,11 +32,17 @@ The hourly public monitor handles feed and release metadata only. Payload
 acquisition and builds belong exclusively on a dedicated or ephemeral runner
 carrying the `codex-packager-trusted` label; never attach that label to a runner
 exposed to untrusted push or pull-request workflows. Proprietary intermediate
-outputs remain local. Only the final public release asset and its evidence are
-uploaded by the keyless repository-write job.
+outputs remain local. The signing-key-free publication job uploads only the
+intended ten-asset release set to a private GitHub draft, redownloads and
+verifies it, and crosses the public commit boundary only after verification
+succeeds.
 
-The automatic release workflow separates the protected signing seed from
-repository write authority. Its signing job must remain read-only and its
-repository-write job must remain keyless. Both jobs reverify the exact signed
-asset set, but that userspace verification does not make retained owner-writable
-files immutable against a hostile process running as the same UID.
+The automatic release workflow separates three authorities. The read-only
+signing job receives only the protected Ed25519 seed. The payload-free tag job
+receives only the scoped deploy key. The publication job receives only the
+environment-scoped release API credential while its built-in `GITHUB_TOKEN`
+remains read-only; it receives neither the signing seed nor deploy key. The
+signing and publication jobs independently verify the exact signed asset set,
+while the tag job validates the exact candidate, ancestry, and tag target.
+These userspace checks do not make retained owner-writable files immutable
+against a hostile process running as the same UID.

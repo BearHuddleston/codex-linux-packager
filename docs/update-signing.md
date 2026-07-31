@@ -24,7 +24,8 @@ part of Git and must never appear in logs, command arguments, artifacts,
 fixtures, or pull requests.
 
 This record establishes the source-tree pin. The private seed is scoped to the
-read-only `release-signing` job; the keyless GitHub release job cannot read it.
+read-only `release-signing` job; the signing-key-free publication job cannot
+read it.
 
 ## Manifest contract
 

@@ -64,7 +64,7 @@
     <text x="54" y="224" fill="#f0f6fc" font-weight="700">Commands:</text>
     <text x="54" y="251" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect</tspan>            Inspect release metadata from the Codex Sparkle feed</text>
     <text x="54" y="278" fill="#c9d1d9">  <tspan fill="#79c0ff">check-upstream</tspan>     Compare the latest feed release with reviewed contract and candidate state</text>
-    <text x="54" y="305" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-contract-source</tspan>  Derive compatible runtime identities from an authenticated stage</text>
+    <text x="54" y="305" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-contract-source</tspan>  Derive compatible runtime identities from one authenticated stage</text>
     <text x="54" y="332" fill="#c9d1d9">  <tspan fill="#79c0ff">refresh-runtime-contract</tspan> Refresh the runtime contract from authenticated and official inputs</text>
     <text x="54" y="359" fill="#c9d1d9">  <tspan fill="#79c0ff">acquire-artifact</tspan>   Download and authenticate one exact feed-selected desktop artifact</text>
     <text x="54" y="386" fill="#c9d1d9">  <tspan fill="#79c0ff">inspect-artifact</tspan>   Authenticate and inspect a downloaded desktop artifact</text>
